@@ -1,0 +1,19 @@
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores / IDEs
+.vscode/
+.idea/
+*.swp
+
+# Docker
+*.env
+.env.*
+
+# Dados locais do Postgres/pgAdmin (caso rodem com bind mount)
+pgdata/
+pgadmin_data/
+
+# Logs
+*.log

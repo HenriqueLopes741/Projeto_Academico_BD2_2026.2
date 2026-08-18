@@ -124,3 +124,45 @@ CREATE DOMAIN nota_t AS numeric(4,2)
 CREATE DOMAIN pct_t AS numeric(5,2)
     CONSTRAINT ck_pct_t_faixa CHECK (VALUE >= 0 AND VALUE <= 100);
 
+-- ---------------------------------------------------------------------
+-- 4. Tipo range de horário
+-- ---------------------------------------------------------------------
+
+-- turma_horario.faixa — timerange não é nativo do PG 17, por isso o
+-- range e a função de distância abaixo precisam existir antes da coluna
+-- que os usa (02_tabelas.sql).
+--
+-- subtype = time (sem fuso): horário de aula é hora de parede — o mesmo
+-- 10h vale igual em qualquer situação, não deve deslizar com
+-- fuso/horário de verão. timetz é desaconselhado pela própria
+-- documentação do Postgres por esse motivo.
+
+-- time_subtype_diff dá ao GiST uma métrica de distância entre dois
+-- horários (em segundos). Sem ela o índice ainda funciona — subtype_diff
+-- é opcional — mas o GiST particiona as páginas às cegas, sem saber que
+-- 08:00 e 08:05 estão mais próximos entre si do que 08:00 e 22:00.
+--
+-- IMMUTABLE: mesma entrada sempre produz a mesma saída — exigido para
+-- qualquer função usada dentro da definição de um índice/tipo indexável.
+-- STRICT: retorna NULL de imediato se x ou y for NULL, sem executar o
+-- corpo. Os limites de um range de fato não são NULL (ausência de limite
+-- é o conceito de "unbounded", diferente disso); STRICT aqui é trava de
+-- segurança, não uma regra de negócio.
+
+CREATE FUNCTION time_subtype_diff(x time, y time)
+RETURNS float8
+AS $$
+    SELECT EXTRACT(EPOCH FROM (x - y))::float8;
+$$ LANGUAGE sql IMMUTABLE STRICT;
+
+COMMENT ON FUNCTION time_subtype_diff(time, time) IS
+    'Distância em segundos entre dois horários; usada pelo GiST de timerange.';
+
+CREATE TYPE timerange AS RANGE (
+    subtype = time,
+    subtype_diff = time_subtype_diff
+);
+
+COMMENT ON TYPE timerange IS
+    'Faixa de horário de aula. Convenção do grupo: sempre semiaberta [) — '
+    'aula que termina 10:40 não conflita com aula que começa 10:40.';

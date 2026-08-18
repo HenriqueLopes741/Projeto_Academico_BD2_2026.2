@@ -17,3 +17,8 @@ pgadmin_data/
 
 # Logs
 *.log
+
+# Dumps de backup (procedimento fica documentado em sql/10_backup_restore.sql,
+# não o dump em si)
+*.dump
+*.backup

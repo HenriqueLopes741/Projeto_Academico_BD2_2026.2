@@ -1,0 +1,9 @@
+-- =====================================================================
+-- 10_backup_restore.sql
+-- Procedimento de backup e restauração, documentado e reproduzível
+-- Frente: Administração e Operação
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO: precisa ser demonstrável ao vivo na apresentação (restauração
+-- de backup ao vivo é item obrigatório da demonstração, Seção 6).

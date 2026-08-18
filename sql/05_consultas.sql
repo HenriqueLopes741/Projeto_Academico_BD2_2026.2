@@ -1,0 +1,14 @@
+-- =====================================================================
+-- 05_consultas.sql
+-- 10 consultas de complexidade crescente, cada uma comentada
+-- Frente: dividido entre os 3 integrantes
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO — obrigatórias pelo enunciado (Seção 4.1):
+--   - 1 junção externa com agregação
+--   - 1 consulta recursiva: árvore de pré-requisitos
+--   - 1 consulta recursiva: disciplinas que um aluno já pode cursar
+--   - 1 função de janela com ranking e percentil
+--   - 1 função de janela com LAG para evolução do rendimento
+--   - + 5 consultas adicionais de complexidade crescente

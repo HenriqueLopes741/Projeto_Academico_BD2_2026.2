@@ -1,0 +1,11 @@
+-- =====================================================================
+-- 04_carga.sql
+-- Carga de dados sintéticos: mínimo 100 alunos, 6 turmas, 300 matrículas
+-- Frente: Modelagem Física e Desempenho
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO: generate_series é permitido pelo enunciado. Popular na ordem das
+-- tabelas (respeitar FKs): campus/disciplina/periodo_letivo/professor →
+-- curso/sala/feriado/pre_requisito/turma → curriculo/turma_horario →
+-- curriculo_disciplina/aluno → matricula → historico → log_matricula

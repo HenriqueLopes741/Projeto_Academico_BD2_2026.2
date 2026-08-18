@@ -1,0 +1,9 @@
+-- =====================================================================
+-- 07_indices.sql
+-- Ao menos 4 índices, incluindo 1 parcial
+-- Frente: Modelagem Física e Desempenho
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO: cada índice precisa de evidência de EXPLAIN (ANALYZE, BUFFERS)
+-- antes/depois em evidencias/explain.md, com o ganho medido.

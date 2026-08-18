@@ -1,0 +1,12 @@
+-- =====================================================================
+-- 08_transacoes.sql
+-- Anomalia de concorrência (disputa pela última vaga) + 2 correções
+-- Frente: Transações e Concorrência
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO:
+--   - Reprodução da anomalia (duas sessões concorrentes)
+--   - Correção 1: bloqueio explícito (SELECT ... FOR UPDATE)
+--   - Correção 2: nível de isolamento (SERIALIZABLE ou similar)
+--   - Comparação: custo, contenção, necessidade de retentativa

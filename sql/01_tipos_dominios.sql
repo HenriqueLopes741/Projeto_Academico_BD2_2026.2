@@ -1,0 +1,13 @@
+-- =====================================================================
+-- 01_tipos_dominios.sql
+-- CREATE TYPE / CREATE DOMAIN / CREATE EXTENSION exigidos pelo modelo
+-- Frente: Modelagem Física e Desempenho
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO:
+--   - CREATE EXTENSION btree_gist (necessária para o EXCLUDE de 03_constraints.sql)
+--   - Tipos enumerados: tipo_disc_t, vinculo_t, tipo_sala_t, turno_t,
+--     status_mat_t, situacao_t
+--   - Domínios numéricos com faixa: nota_t, pct_t
+--   - CREATE TYPE timerange AS RANGE (subtype = time) — não é nativo do PG 17

@@ -1,0 +1,17 @@
+-- =====================================================================
+-- 02_tabelas.sql
+-- CREATE TABLE das 16 tabelas do modelo, sem constraints (ficam em 03)
+-- Frente: Modelagem Física e Desempenho
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO: criar as 16 tabelas na ordem de dependência de FK (ver CLAUDE.md):
+--   1. campus, disciplina, periodo_letivo, professor
+--   2. curso, sala, feriado, pre_requisito, turma
+--   3. curriculo, turma_horario
+--   4. curriculo_disciplina, aluno
+--   5. matricula
+--   6. historico
+--   7. log_matricula (a qualquer momento — sem FK no modelo)
+--
+-- Conferir cada nome de tabela/coluna contra o modelo lógico antes de escrever.

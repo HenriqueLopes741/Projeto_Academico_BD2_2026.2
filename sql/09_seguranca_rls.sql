@@ -1,0 +1,8 @@
+-- =====================================================================
+-- 09_seguranca_rls.sql
+-- Roles (aluno, secretaria, coordenacao), GRANT/REVOKE, row-level security
+-- Frente: Administração e Operação
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO: RLS precisa impedir um aluno de ver o histórico de outro.

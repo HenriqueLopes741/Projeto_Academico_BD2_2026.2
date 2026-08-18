@@ -1,0 +1,16 @@
+-- =====================================================================
+-- 03_constraints.sql
+-- FK, CHECK, UNIQUE, EXCLUDE
+-- Frente: Modelagem Física e Desempenho
+-- Banco de Dados II (CCO072) — IESB 2026/2
+-- =====================================================================
+--
+-- TODO:
+--   - Todas as FKs com ON DELETE explícito e justificado (nada em NO ACTION)
+--   - UNIQUE (aluno_id, turma_id) em matricula (não está no diagrama, mas
+--     necessário pro controle de vagas)
+--   - UNIQUE (id, curso_id) em curriculo + FK composta em aluno, pra impedir
+--     currículo de curso diferente do curso do aluno
+--   - EXCLUDE USING gist em turma_horario (avaliar EXCLUDE vs. trigger —
+--     turma_horario não tem periodo_letivo_id, ver CLAUDE.md ponto 1)
+--   - Nomear toda constraint explicitamente: fk_*, ck_*, uq_*, ex_*

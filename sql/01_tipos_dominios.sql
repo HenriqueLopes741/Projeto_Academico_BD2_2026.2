@@ -26,3 +26,78 @@
 
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
+-- ----------------------------------------------------------------------
+-- 2. Tipos enumerados
+-- ----------------------------------------------------------------------
+
+-- A ordem dos rótulos define a ordenação do tipo (ORDER BY usa a ordem de
+-- declaração, não a alfabética). Onde existe sequência natural, ela está
+-- respeitada. Rótulos sem acento e em minúsculo: são case e accent
+-- sensitive, e qualquer divergência quebra a carga em 04_carga.sql.
+
+-- sala.tipo — classifica o espaço físico. Não guarda capacidade nem
+-- equipamento (isso é sala.capacidade); serve para casar disciplina
+-- prática/teórica com o tipo de sala na alocação de turma_horario.
+
+CREATE TYPE tipo_sala_t AS ENUM (
+    'teorica',
+    'laboratorio',
+    'auditorio'
+);
+
+-- turma.turno — turno declarado da turma, não o horário exato. O horário
+-- de fato (dia da semana + faixa) mora em turma_horario; turno é a
+-- informação "de vitrine" usada em busca/filtro de oferta.
+
+CREATE TYPE turno_t AS ENUM (
+    'matutino',
+    'vespertino',
+    'noturno'
+);
+
+-- pre_requisito.vinculo — natureza da relação entre disciplina e
+-- requisito na tabela auto-relacionada. pre_requisito: precisa ter sido
+-- cursada/aprovada antes; co_requisito: pode ser cursada no mesmo
+-- período; equivalencia: uma dispensa a outra (ex.: disciplina
+-- reformulada substituindo a antiga no currículo).
+
+CREATE TYPE vinculo_t AS ENUM (
+    'pre_requisito',
+    'co_requisito',
+    'equivalencia'
+);
+
+-- curriculo_disciplina.tipo — papel da disciplina dentro daquele
+-- currículo específico. Fica na tabela de ligação, e não em disciplina,
+-- porque a mesma disciplina pode ser obrigatória num currículo e
+-- optativa em outro.
+CREATE TYPE tipo_disc_t AS ENUM (
+    'obrigatoria',
+    'optativa',
+    'eletiva'
+);
+
+-- matricula.status — ciclo de vida da matrícula, na ordem em que os
+-- estados acontecem.
+
+CREATE TYPE status_mat_t AS ENUM (
+    'solicitada',
+    'confirmada',
+    'trancada',
+    'cancelada',
+    'concluida'
+);
+
+-- historico.situacao — resultado final da matrícula após o período
+-- encerrar. Reprovação separada por causa: nota (reprovado_nota) ou
+-- frequência (reprovado_falta), podendo ocorrer as duas ao mesmo tempo
+-- (reprovado_nota_falta) — por isso são rótulos exaustivos de um único
+-- enum, e não dois booleanos independentes.
+
+CREATE TYPE situacao_t AS ENUM (
+    'cursando',
+    'aprovado',
+    'reprovado_nota',
+    'reprovado_falta',
+    'reprovado_nota_falta'
+);

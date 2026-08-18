@@ -101,3 +101,26 @@ CREATE TYPE situacao_t AS ENUM (
     'reprovado_falta',
     'reprovado_nota_falta'
 );
+
+-- ---------------------------------------------------------------------
+-- 3. Domínios numéricos
+-- ---------------------------------------------------------------------
+
+-- historico.nota_a1 / nota_a2 / nota_p3 — numeric(4,2) acompanha o tipo
+-- de historico.media_final, definido no modelo: as três notas e a média
+-- ficam no mesmo tipo base, sem coerção implícita na coluna gerada.
+-- numeric(4,2) por si só permitiria até 99,99; é o CHECK que restringe a
+-- faixa a 0-10, não a precisão numérica declarada no tipo.
+-- O CHECK não rejeita NULL — nota ainda não lançada é ausência de dado,
+-- não violação. Obrigatoriedade, se houver, é NOT NULL na coluna (02).
+
+CREATE DOMAIN nota_t AS numeric(4,2)
+    CONSTRAINT ck_nota_t_faixa CHECK (VALUE >= 0 AND VALUE <= 10);
+
+-- historico.frequencia — percentual de presença, faixa 0-100. 5 dígitos
+-- totais (numeric(5,2)) para caber 100,00 sem estourar a precisão; com
+-- numeric(4,2) o valor máximo representável seria 99,99.
+
+CREATE DOMAIN pct_t AS numeric(5,2)
+    CONSTRAINT ck_pct_t_faixa CHECK (VALUE >= 0 AND VALUE <= 100);
+

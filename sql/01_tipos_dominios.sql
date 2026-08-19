@@ -77,25 +77,31 @@ CREATE TYPE tipo_disc_t AS ENUM (
     'eletiva'
 );
 
--- matricula.status — ciclo de vida da matrícula, na ordem em que os
--- estados acontecem.
+-- matricula.status — ciclo de vida da matrícula. 'ativa' é o único
+-- estado inicial: matricula tem um único data_matricula, sem coluna para
+-- separar "solicitado" de "confirmado", então o INSERT já é o ato de
+-- matricular. 'trancada', 'cancelada' e 'concluida' são desfechos
+-- possíveis a partir de 'ativa' — não uma sequência linear entre si.
 
 CREATE TYPE status_mat_t AS ENUM (
-    'solicitada',
-    'confirmada',
+    'ativa',
     'trancada',
     'cancelada',
     'concluida'
 );
 
--- historico.situacao — resultado final da matrícula após o período
--- encerrar. Reprovação separada por causa: nota (reprovado_nota) ou
--- frequência (reprovado_falta), podendo ocorrer as duas ao mesmo tempo
--- (reprovado_nota_falta) — por isso são rótulos exaustivos de um único
--- enum, e não dois booleanos independentes.
+-- historico.situacao — estado da matrícula ao longo do período, não só o
+-- resultado terminal: a linha de historico nasce junto com a matrícula
+-- ('cursando', notas ainda nulas — ver nota_t) e é atualizada conforme o
+-- período avança. 'trancada' cobre quem abandona no meio do caminho, sem
+-- nota final lançada. Reprovação separada por causa: nota
+-- (reprovado_nota) ou frequência (reprovado_falta), podendo ocorrer as
+-- duas ao mesmo tempo (reprovado_nota_falta) — por isso são rótulos
+-- exaustivos de um único enum, e não dois booleanos independentes.
 
 CREATE TYPE situacao_t AS ENUM (
     'cursando',
+    'trancada',
     'aprovado',
     'reprovado_nota',
     'reprovado_falta',

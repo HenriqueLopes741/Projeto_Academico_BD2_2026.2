@@ -397,3 +397,103 @@ ALTER TABLE curriculo_disciplina
     ADD CONSTRAINT fk_curriculo_disciplina_disciplina
         FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
         ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ============================================================
+-- ALUNO
+-- ============================================================
+
+ALTER TABLE aluno
+    -- Identifica cada aluno de forma única.
+    ADD CONSTRAINT pk_aluno PRIMARY KEY (id),
+
+    -- Não permite dois alunos com a mesma matrícula.
+    ADD CONSTRAINT uq_aluno_matricula UNIQUE (matricula),
+
+    -- Não permite dois alunos com o mesmo CPF.
+    ADD CONSTRAINT uq_aluno_cpf UNIQUE (cpf),
+
+    -- Não permite dois alunos com o mesmo email.
+    ADD CONSTRAINT uq_aluno_email UNIQUE (email),
+
+    -- Impede matrícula vazia ou apenas com espaços.
+    ADD CONSTRAINT ck_aluno_matricula_preenchida
+        CHECK (length(btrim(matricula)) > 0),
+
+    -- Impede nome vazio ou apenas com espaços.
+    ADD CONSTRAINT ck_aluno_nome_preenchido
+        CHECK (length(btrim(nome)) > 0),
+
+    -- Único CHECK de formato do projeto, e a exceção se justifica: CPF tem
+    -- formato universalmente fixo (11 dígitos), ao contrário de codigo/
+    -- matricula, onde regex quebraria a carga real. Não valida dígito
+    -- verificador — isso é regra de aplicação, não de integridade estrutural.
+    ADD CONSTRAINT ck_aluno_cpf_valido
+        CHECK (cpf ~ '^[0-9]{11}$'),
+
+    -- Mesma política de professor: normaliza em vez de índice funcional.
+    ADD CONSTRAINT ck_aluno_email_minusculo
+        CHECK (email = lower(email)),
+    ADD CONSTRAINT ck_aluno_email_formato
+        CHECK (email LIKE '%_@_%._%'),
+
+    -- CHECKs multi-coluna: enxergam a linha inteira.
+    ADD CONSTRAINT ck_aluno_ingresso_apos_nascimento
+        CHECK (ingresso > nascimento),
+
+    -- Piso defensivo contra digitação (1900) sem inventar idade mínima.
+    ADD CONSTRAINT ck_aluno_nascimento_plausivel
+        CHECK (nascimento BETWEEN '1900-01-01' AND current_date),
+
+    -- FK COMPOSTA — o ponto da tabela.
+    -- As duas colunas isoladas seriam válidas independentemente: nada
+    -- impediria aluno no curso de Computação com currículo de Direito.
+    -- Esta FK exige que o PAR exista junto em curriculo, o que só é
+    -- verdade se o currículo pertencer àquele curso.
+    -- Só é declarável porque curriculo tem uq_curriculo_id_curso: FK exige
+    -- PK ou UNIQUE cobrindo as colunas referenciadas.
+    -- Substitui a FK simples para curriculo — declarar as duas seria redundante.
+    ADD CONSTRAINT fk_aluno_curriculo_curso
+        FOREIGN KEY (curriculo_id, curso_id) REFERENCES curriculo (id, curso_id)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
+
+    -- FK simples para curso: NÃO é redundante com a composta. A composta
+    -- garante coerência do par; esta garante que curso_id aponta para curso
+    -- existente mesmo isoladamente, e é o que o modelo declara.
+    ADD CONSTRAINT fk_aluno_curso
+        FOREIGN KEY (curso_id) REFERENCES curso (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+COMMENT ON CONSTRAINT fk_aluno_curriculo_curso ON aluno IS
+    'Depende de uq_curriculo_id_curso em curriculo. Se aquela UNIQUE for '
+    'removida, esta FK deixa de ser declarável.';
+
+-- ============================================================
+-- MATRICULA
+-- ============================================================
+
+ALTER TABLE matricula
+    -- Identifica cada matrícula de forma única.
+    ADD CONSTRAINT pk_matricula PRIMARY KEY (id),
+
+    -- Impede que um mesmo aluno se matricule duas vezes na mesma turma.
+    ADD CONSTRAINT uq_matricula_aluno_turma
+        UNIQUE (aluno_id, turma_id),
+
+    -- Matrícula com data futura é erro de carga ou de relógio.
+    ADD CONSTRAINT ck_matricula_data_nao_futura
+        CHECK (data_matricula <= now()),
+
+
+
+    -- RESTRICT: matrícula NÃO é parte composicional do aluno — é registro
+    -- acadêmico com valor próprio, que a instituição precisa preservar mesmo
+    -- após o desligamento. Com CASCADE, apagar um aluno propagaria por
+    -- matricula até historico (também CASCADE), destruindo notas e frequência
+    -- em silêncio. Desligamento é ativo = false, nunca DELETE — e é por isso
+    -- que a coluna aluno.ativo existe no modelo.
+    -- Note a assimetria deliberada: historico → matricula segue CASCADE,
+    -- porque ali a relação É composicional (1:1, não existe sem a matrícula).
+    -- O RESTRICT aqui barra a cadeia na origem.
+    ADD CONSTRAINT fk_matricula_aluno
+        FOREIGN KEY (aluno_id) REFERENCES aluno (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE

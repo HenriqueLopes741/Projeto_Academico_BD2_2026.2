@@ -497,3 +497,38 @@ ALTER TABLE matricula
     ADD CONSTRAINT fk_matricula_aluno
         FOREIGN KEY (aluno_id) REFERENCES aluno (id)
         ON DELETE RESTRICT ON UPDATE CASCADE
+
+-- ============================================================
+-- HISTORICO
+-- ============================================================
+
+ALTER TABLE historico
+    ADD CONSTRAINT pk_historico PRIMARY KEY (id),
+
+    -- O U do modelo: garante o 1:1.
+    ADD CONSTRAINT uq_historico_matricula UNIQUE (matricula_id),
+
+    -- CASCADE: histórico é parte composicional da matrícula. Sem a matrícula,
+    -- a linha de notas não tem sujeito.
+    ADD CONSTRAINT fk_historico_matricula
+        FOREIGN KEY (matricula_id) REFERENCES matricula (id)
+        ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- ============================================================
+-- LOG_MATRICULA
+-- ============================================================
+
+-- Sem FK — deliberado (ver comentário em 02_tabelas.sql). Só PK e os
+-- CHECKs de formato do payload.
+
+ALTER TABLE log_matricula
+    ADD CONSTRAINT pk_log_matricula PRIMARY KEY (id),
+
+    ADD CONSTRAINT ck_log_matricula_acao_preenchida
+        CHECK (length(btrim(acao)) > 0),
+
+    -- Objeto no topo do jsonb, não array nem escalar. Padroniza o consumo:
+    -- quem lê o log sabe que detalhe->>'chave' sempre faz sentido.
+    -- jsonb_typeof é IMMUTABLE, então serve em CHECK.
+    ADD CONSTRAINT ck_log_matricula_detalhe_objeto
+        CHECK (detalhe IS NULL OR jsonb_typeof(detalhe) = 'object');

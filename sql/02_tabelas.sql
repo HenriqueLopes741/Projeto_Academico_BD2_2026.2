@@ -452,3 +452,63 @@ COMMENT ON COLUMN feriado.campus_id IS
     'NULL = feriado nacional (todos os campi). Preenchido = feriado local '
     'daquele campus. A UNIQUE usa NULLS NOT DISTINCT para que a duplicata '
     'de feriado nacional na mesma data seja rejeitada.';
+
+-- ============================================================
+-- PRE_REQUISITO
+-- ============================================================
+
+-- Tabela associativa de pré-requisitos entre disciplinas.
+-- É um auto-relacionamento N:N: uma disciplina pode exigir várias
+-- disciplinas e também pode ser requisito de várias outras.
+
+CREATE TABLE pre_requisito(
+    -- Disciplina que possui o requisito, ou seja, a disciplina
+    -- que vem depois na sequência.
+    disciplina_id integer NOT NULL,
+
+    -- Disciplina que está sendo exigida como requisito.
+    requisito_id integer NOT NULL,
+
+    -- Tipo do vínculo entre as disciplinas, definido pelo ENUM
+    -- vinculo_t. Obrigatório para identificar a natureza da relação.
+    vinculo vinculo_t NOT NULL,
+
+    -- Chave primária composta pelo par de disciplinas.
+    -- Impede que o mesmo relacionamento seja cadastrado duas vezes.
+    -- Não é necessário criar um id separado.
+    CONSTRAINT pk_pre_requisito 
+        PRIMARY KEY (disciplina_id, requisito_id),
+
+    -- Impede que uma disciplina seja requisito dela mesma.
+    -- Ex.: Algoritmos I não pode exigir Algoritmos I.
+    -- Não impede ciclos maiores, como A → B → A.
+    CONSTRAINT ck_pre_requisito_sem_autorreferencia
+        CHECK (disciplina_id <> requisito_id),
+
+    -- Garante que a disciplina que possui o requisito exista.
+    -- CASCADE: ao apagar essa disciplina, seus vínculos de
+    -- pré-requisito também são removidos.
+    CONSTRAINT fk_pre_requisito_disciplina
+        FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    -- Garante que a disciplina exigida exista.
+    -- RESTRICT: impede apagar uma disciplina que ainda é
+    -- utilizada como requisito por outra.
+    CONSTRAINT fk_pre_requisito_requisito
+        FOREIGN KEY (requisito_id) REFERENCES disciplina (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
+);
+
+COMMENT ON TABLE pre_requisito IS
+    'Auto-relacionamento N:N de disciplina. Base da consulta recursiva da '
+    'árvore de pré-requisitos. Ciclos maiores que 1 NÃO são impedidos por '
+    'constraint — é limitação conceitual, não de sintaxe.';
+COMMENT ON COLUMN pre_requisito.disciplina_id IS
+    'Disciplina que exige. ON DELETE CASCADE: apagar a disciplina apaga suas '
+    'exigências, que não fazem sentido sem ela.';
+COMMENT ON COLUMN pre_requisito.requisito_id IS
+    'Disciplina exigida. ON DELETE RESTRICT: apagá-la quebraria a grade de '
+    'outras disciplinas silenciosamente.';

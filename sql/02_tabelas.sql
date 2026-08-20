@@ -737,3 +737,56 @@ COMMENT ON COLUMN turma_horario.faixa IS
 COMMENT ON CONSTRAINT ex_turma_horario_sala_ocupada ON turma_horario IS
     'Escopo: sala. NÃO impede que a mesma turma tenha dois horários '
     'sobrepostos em salas diferentes, nem conflito de professor.';
+
+-- ============================================================
+-- CURRICULO_DISCIPLINA
+-- ============================================================
+
+-- Associativa N:N entre curriculo e disciplina: quais disciplinas compõem
+-- uma grade, em que período, com que natureza.
+-- Depende de curriculo e disciplina. Não é referenciada por ninguém.
+
+CREATE TABLE curriculo_disciplina(
+    curriculo_id integer NOT NULL,
+    disciplina_id integer NOT NULL,
+
+    -- Semestre da grade em que a disciplina é ofertada (1º período, 2º...).
+    -- NÃO confundir com periodo_letivo, que é o semestre calendário.
+    -- Nomes parecidos, conceitos distintos.
+    periodo smallint NOT NULL,
+
+    -- Enum do modelo: obrigatória, optativa, eletiva.
+    tipo tipo_disc_t NOT NULL,
+
+    -- PK composta é a própria unicidade: uma disciplina aparece no máximo
+    -- uma vez por currículo. Sem surrogate — o modelo não dá, e o par já
+    -- identifica a linha.
+    CONSTRAINT pk_curriculo_disciplina 
+        PRIMARY KEY (curriculo_id, disciplina_id),
+
+    -- Grade de graduação vai até ~10 períodos. Teto folgado, piso rígido:
+    -- período 0 ou negativo não existe.
+    CONSTRAINT ck_curriculo_disciplina_periodo
+        CHECK (periodo BETWEEN 1 AND 20),
+
+    -- CASCADE: a linha é parte composicional do currículo. Apagar a grade
+    -- apaga sua composição, que não significa nada isolada.
+    CONSTRAINT fk_curriculo_disciplina_curriculo
+        FOREIGN KEY (curriculo_id) REFERENCES curriculo (id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    -- RESTRICT: disciplina é catálogo independente, compartilhado por várias
+    -- grades. Apagá-la esvaziaria currículos silenciosamente.
+    -- Mesma assimetria de pre_requisito: composição em cascata, catálogo restrito.
+    CONSTRAINT fk_curriculo_disciplina_disciplina
+        FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
+);
+
+COMMENT ON TABLE curriculo_disciplina IS
+    'Composição da grade curricular. Junto com pre_requisito, é a base da '
+    'consulta recursiva das disciplinas que um aluno já pode cursar.';
+COMMENT ON COLUMN curriculo_disciplina.periodo IS
+    'Semestre da GRADE (1º, 2º...), não o periodo_letivo calendário.';

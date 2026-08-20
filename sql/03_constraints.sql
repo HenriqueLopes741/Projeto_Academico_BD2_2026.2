@@ -496,7 +496,13 @@ ALTER TABLE matricula
     -- O RESTRICT aqui barra a cadeia na origem.
     ADD CONSTRAINT fk_matricula_aluno
         FOREIGN KEY (aluno_id) REFERENCES aluno (id)
-        ON DELETE RESTRICT ON UPDATE CASCADE
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+
+ALTER TABLE matricula
+    ADD CONSTRAINT fk_matricula_turma
+        FOREIGN KEY (turma_id) REFERENCES turma (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
 -- HISTORICO

@@ -284,3 +284,116 @@ ALTER TABLE turma
     ADD CONSTRAINT fk_turma_professor
         FOREIGN KEY (professor_id) REFERENCES professor (id)
         ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ============================================================
+-- CURRICULO
+-- ============================================================
+
+ALTER TABLE curriculo
+    -- Identifica cada currículo de forma única.
+    ADD CONSTRAINT pk_curriculo PRIMARY KEY (id),
+
+    -- Um curso não pode possuir duas grades para o mesmo
+    -- ano de vigência.
+    ADD CONSTRAINT uq_curriculo_curso_ano
+        UNIQUE (curso_id, ano_vigencia),
+
+    -- Permite que (id, curso_id) seja utilizado como alvo
+    -- de uma FK composta na tabela aluno.
+    ADD CONSTRAINT uq_curriculo_id_curso
+        UNIQUE (id, curso_id),
+
+    -- Limita o ano de vigência ao intervalo de 2000 a 2100.
+    ADD CONSTRAINT ck_curriculo_ano_vigencia
+        CHECK (ano_vigencia BETWEEN 2000 AND 2100),
+
+    -- Relaciona o currículo ao curso.
+    -- RESTRICT impede apagar um curso que possui currículos.
+    ADD CONSTRAINT fk_curriculo_curso
+        FOREIGN KEY (curso_id) REFERENCES curso (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+COMMENT ON CONSTRAINT uq_curriculo_id_curso ON curriculo IS
+    'Aparentemente redundante (id já é PK). Existe para servir de alvo à FK '
+    'composta (curriculo_id, curso_id) de aluno, que garante coerência entre '
+    'o curso do aluno e o curso do seu currículo. A ordem das colunas na FK '
+    'precisa casar com a ordem desta UNIQUE (id, curso_id).';
+
+-- ============================================================
+-- TURMA_HORARIO
+-- ============================================================
+
+ALTER TABLE turma_horario
+    -- Identifica cada horário de forma única.
+    ADD CONSTRAINT pk_turma_horario PRIMARY KEY (id),
+
+    -- Garante que o dia da semana esteja entre 1 e 7.
+    ADD CONSTRAINT ck_turma_horario_dia_semana
+        CHECK (dia_semana BETWEEN 1 AND 7),
+
+    -- Garante que a faixa possua início e fim e não seja vazia.
+    ADD CONSTRAINT ck_turma_horario_faixa_valida
+        CHECK (NOT isempty(faixa)
+        AND lower(faixa) IS NOT NULL
+        AND upper(faixa) IS NOT NULL),
+
+    -- Impede duas turmas na mesma sala, no mesmo dia,
+    -- com horários sobrepostos.
+    -- Utiliza btree_gist para permitir '=' em sala_id e dia_semana.
+    ADD CONSTRAINT ex_turma_horario_sala_ocupada
+        EXCLUDE USING gist (
+            sala_id WITH =,
+            dia_semana WITH =,
+            faixa WITH &&
+        ),
+
+    -- Relaciona o horário à turma.
+    -- CASCADE exclui os horários quando a turma é excluída.
+    ADD CONSTRAINT fk_turma_horario_turma
+        FOREIGN KEY (turma_id) REFERENCES turma (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    -- Relaciona o horário à sala.
+    -- RESTRICT impede apagar uma sala que possui horários.
+    ADD CONSTRAINT fk_turma_horario_sala
+        FOREIGN KEY (sala_id) REFERENCES sala (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+COMMENT ON CONSTRAINT ex_turma_horario_sala_ocupada ON turma_horario IS
+    'Escopo: sala + dia + faixa horária. LIMITE CONHECIDO E DELIBERADO: não '
+    'inclui periodo_letivo_id, que vive em turma e é inalcançável — EXCLUDE, '
+    'como CHECK, só enxerga colunas da própria linha. Com carga de um único '
+    'período o comportamento é correto; com múltiplos períodos bloquearia o '
+    'reuso legítimo da mesma sala e horário entre semestres. Incluir exigiria '
+    'denormalizar periodo_letivo_id nesta tabela (alteraria o modelo) ou uma '
+    'trigger com join em turma. Também não cobre conflito de professor nem '
+    'a mesma turma com horários sobrepostos em salas diferentes.';
+
+-- ============================================================
+-- CURRICULO_DISCIPLINA
+-- ============================================================
+
+ALTER TABLE curriculo_disciplina
+    -- PK composta é a própria unicidade: uma disciplina aparece no máximo
+    -- uma vez por currículo. Sem surrogate — o modelo não dá, e o par já
+    -- identifica a linha.
+    ADD CONSTRAINT pk_curriculo_disciplina
+        PRIMARY KEY (curriculo_id, disciplina_id),
+
+    -- Grade de graduação vai até ~10 períodos. Teto folgado, piso rígido:
+    -- período 0 ou negativo não existe.
+    ADD CONSTRAINT ck_curriculo_disciplina_periodo
+        CHECK (periodo BETWEEN 1 AND 20),
+
+    -- CASCADE: a linha é parte composicional do currículo. Apagar a grade
+    -- apaga sua composição, que não significa nada isolada.
+    ADD CONSTRAINT fk_curriculo_disciplina_curriculo
+        FOREIGN KEY (curriculo_id) REFERENCES curriculo (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    -- RESTRICT: disciplina é catálogo independente, compartilhado por várias
+    -- grades. Apagá-la esvaziaria currículos silenciosamente.
+    -- Mesma assimetria de pre_requisito: composição em cascata, catálogo restrito.
+    ADD CONSTRAINT fk_curriculo_disciplina_disciplina
+        FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -177,3 +177,110 @@ ALTER TABLE sala
     ADD CONSTRAINT fk_sala_campus
         FOREIGN KEY (campus_id) REFERENCES campus (id)
         ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ============================================================
+-- FERIADO
+-- ============================================================
+
+ALTER TABLE feriado
+    -- Identifica unicamente cada feriado.
+    ADD CONSTRAINT pk_feriado PRIMARY KEY (id),
+
+    -- Impede a mesma data para o mesmo campus.
+    --
+    -- NULLS NOT DISTINCT é importante porque faz NULL ser tratado
+    -- como igual a outro NULL.
+    --
+    -- Assim, não é possível cadastrar duas vezes o mesmo feriado
+    -- nacional na mesma data.
+    --
+    -- Exemplos:
+    --   (21/04/2026, NULL) → pode existir apenas uma vez.
+    --   (15/08/2026, 1)    → pode existir apenas uma vez no campus 1.
+    --   (15/08/2026, 2)    → permitido, pois é outro campus.
+    ADD CONSTRAINT uq_feriado_data_campus
+        UNIQUE NULLS NOT DISTINCT (data, campus_id),
+
+    -- Impede descrição vazia ou formada apenas por espaços.
+    ADD CONSTRAINT ck_feriado_descricao_preenchida
+        CHECK (length(btrim(descricao)) > 0),
+
+    -- Relaciona o feriado ao campus.
+    -- Quando campus_id estiver preenchido, ele precisa existir
+    -- em campus.id.
+    -- RESTRICT impede apagar um campus que possui feriados locais.
+    -- CASCADE atualiza campus_id caso o id do campus seja alterado.
+    ADD CONSTRAINT fk_feriado_campus
+        FOREIGN KEY (campus_id) REFERENCES campus (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ============================================================
+-- PRE_REQUISITO
+-- ============================================================
+
+ALTER TABLE pre_requisito
+    -- Chave primária composta pelo par de disciplinas.
+    -- Impede que o mesmo relacionamento seja cadastrado duas vezes.
+    -- Não é necessário criar um id separado.
+    ADD CONSTRAINT pk_pre_requisito
+        PRIMARY KEY (disciplina_id, requisito_id),
+
+    -- Impede que uma disciplina seja requisito dela mesma.
+    -- Ex.: Algoritmos I não pode exigir Algoritmos I.
+    -- Não impede ciclos maiores, como A → B → A.
+    ADD CONSTRAINT ck_pre_requisito_sem_autorreferencia
+        CHECK (disciplina_id <> requisito_id),
+
+    -- Garante que a disciplina que possui o requisito exista.
+    -- CASCADE: ao apagar essa disciplina, seus vínculos de
+    -- pré-requisito também são removidos.
+    ADD CONSTRAINT fk_pre_requisito_disciplina
+        FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    -- Garante que a disciplina exigida exista.
+    -- RESTRICT: impede apagar uma disciplina que ainda é
+    -- utilizada como requisito por outra.
+    ADD CONSTRAINT fk_pre_requisito_requisito
+        FOREIGN KEY (requisito_id) REFERENCES disciplina (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ============================================================
+-- TURMA
+-- ============================================================
+
+ALTER TABLE turma
+    -- Identifica cada turma de forma única.
+    ADD CONSTRAINT pk_turma PRIMARY KEY (id),
+
+    -- O código pode se repetir em períodos diferentes,
+    -- mas não pode se repetir dentro do mesmo período.
+    -- Ex.: CCODM2B pode existir em 2026/1 e 2026/2.
+    ADD CONSTRAINT uq_turma_periodo_codigo
+        UNIQUE (periodo_letivo_id, codigo),
+
+    -- Impede código vazio ou formado apenas por espaços.
+    ADD CONSTRAINT ck_turma_codigo_preenchido
+        CHECK (length(btrim(codigo)) > 0),
+
+    -- Garante pelo menos 1 vaga e limita a 300.
+    ADD CONSTRAINT ck_turma_vagas
+        CHECK (vagas BETWEEN 1 AND 300),
+
+    -- Relaciona a turma à disciplina.
+    -- RESTRICT impede apagar uma disciplina que possui turmas.
+    ADD CONSTRAINT fk_turma_disciplina
+        FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
+
+    -- Relaciona a turma ao período letivo.
+    -- RESTRICT impede apagar um período que possui turmas.
+    ADD CONSTRAINT fk_turma_periodo_letivo
+        FOREIGN KEY (periodo_letivo_id) REFERENCES periodo_letivo (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
+
+    -- Relaciona a turma ao professor responsável.
+    -- RESTRICT impede apagar um professor que possui turmas.
+    ADD CONSTRAINT fk_turma_professor
+        FOREIGN KEY (professor_id) REFERENCES professor (id)
+        ON DELETE RESTRICT ON UPDATE CASCADE;

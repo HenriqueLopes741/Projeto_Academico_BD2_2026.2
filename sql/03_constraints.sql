@@ -124,28 +124,28 @@ ALTER TABLE professor
 
 ALTER TABLE curso
     -- Identifica unicamente cada curso.
-    ADD CONSTRAINT pk_curso PRIMARY KEY (id),
+    ADD CONSTRAINT pk_curso PRIMARY KEY (id_curso),
 
     -- Não permite dois cursos com o mesmo código.
-    ADD CONSTRAINT uq_curso_codigo UNIQUE (codigo),
+    ADD CONSTRAINT uq_curso_codigo UNIQUE (codigo_curso),
 
     -- Impede código vazio ou apenas com espaços.
     ADD CONSTRAINT ck_curso_codigo_preenchido
-        CHECK (length(btrim(codigo)) > 0),
+        CHECK (length(btrim(codigo_curso)) > 0),
 
     -- Impede nome vazio ou apenas com espaços.
     ADD CONSTRAINT ck_curso_nome_preenchido
-        CHECK (length(btrim(nome)) > 0),
+        CHECK (length(btrim(nome_curso)) > 0),
 
     -- Garante que a carga horária seja maior que zero.
     ADD CONSTRAINT ck_curso_ch_total_positiva
-        CHECK (ch_total > 0),
+        CHECK (ch_total_curso > 0),
 
     -- Relaciona o curso ao campus.
     -- RESTRICT impede apagar um campus que ainda possui cursos.
-    -- CASCADE atualiza campus_id caso o id do campus seja alterado.
+    -- CASCADE atualiza id_campus caso o id_campus seja alterado.
     ADD CONSTRAINT fk_curso_campus
-        FOREIGN KEY (campus_id) REFERENCES campus (id)
+        FOREIGN KEY (id_campus) REFERENCES campus (id_campus)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
@@ -154,28 +154,28 @@ ALTER TABLE curso
 
 ALTER TABLE sala
     -- Identifica unicamente cada sala.
-    ADD CONSTRAINT pk_sala PRIMARY KEY (id),
+    ADD CONSTRAINT pk_sala PRIMARY KEY (id_sala),
 
     -- Garante que o código seja único dentro de cada campus.
     -- O mesmo código pode existir em campi diferentes.
     -- Ex.: Campus 1 → A-101 | Campus 2 → A-101.
     ADD CONSTRAINT uq_sala_campus_codigo
-        UNIQUE (campus_id, codigo),
+        UNIQUE (id_campus, codigo_sala),
 
     -- Impede código vazio ou apenas com espaços.
     ADD CONSTRAINT ck_sala_codigo_preenchido
-        CHECK (length(btrim(codigo)) > 0),
+        CHECK (length(btrim(codigo_sala)) > 0),
 
     -- Garante uma capacidade entre 1 e 1000 pessoas.
     -- Evita valores inválidos ou possíveis erros de digitação.
     ADD CONSTRAINT ck_sala_capacidade
-        CHECK (capacidade BETWEEN 1 AND 1000),
+        CHECK (capacidade_sala BETWEEN 1 AND 1000),
 
     -- Relaciona a sala ao campus.
     -- RESTRICT impede apagar um campus que ainda possui salas.
-    -- CASCADE atualiza campus_id caso o id do campus seja alterado.
+    -- CASCADE atualiza id_campus caso o id_campus seja alterado.
     ADD CONSTRAINT fk_sala_campus
-        FOREIGN KEY (campus_id) REFERENCES campus (id)
+        FOREIGN KEY (id_campus) REFERENCES campus (id_campus)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
@@ -184,7 +184,7 @@ ALTER TABLE sala
 
 ALTER TABLE feriado
     -- Identifica unicamente cada feriado.
-    ADD CONSTRAINT pk_feriado PRIMARY KEY (id),
+    ADD CONSTRAINT pk_feriado PRIMARY KEY (id_feriado),
 
     -- Impede a mesma data para o mesmo campus.
     --
@@ -199,19 +199,19 @@ ALTER TABLE feriado
     --   (15/08/2026, 1)    → pode existir apenas uma vez no campus 1.
     --   (15/08/2026, 2)    → permitido, pois é outro campus.
     ADD CONSTRAINT uq_feriado_data_campus
-        UNIQUE NULLS NOT DISTINCT (data, campus_id),
+        UNIQUE NULLS NOT DISTINCT (data_feriado, id_campus),
 
     -- Impede descrição vazia ou formada apenas por espaços.
     ADD CONSTRAINT ck_feriado_descricao_preenchida
-        CHECK (length(btrim(descricao)) > 0),
+        CHECK (length(btrim(descricao_feriado)) > 0),
 
     -- Relaciona o feriado ao campus.
-    -- Quando campus_id estiver preenchido, ele precisa existir
-    -- em campus.id.
+    -- Quando id_campus estiver preenchido, ele precisa existir
+    -- em campus.id_campus.
     -- RESTRICT impede apagar um campus que possui feriados locais.
-    -- CASCADE atualiza campus_id caso o id do campus seja alterado.
+    -- CASCADE atualiza id_campus caso o id_campus seja alterado.
     ADD CONSTRAINT fk_feriado_campus
-        FOREIGN KEY (campus_id) REFERENCES campus (id)
+        FOREIGN KEY (id_campus) REFERENCES campus (id_campus)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
@@ -223,26 +223,26 @@ ALTER TABLE pre_requisito
     -- Impede que o mesmo relacionamento seja cadastrado duas vezes.
     -- Não é necessário criar um id separado.
     ADD CONSTRAINT pk_pre_requisito
-        PRIMARY KEY (disciplina_id, requisito_id),
+        PRIMARY KEY (id_disciplina, id_disciplina_requisito),
 
     -- Impede que uma disciplina seja requisito dela mesma.
     -- Ex.: Algoritmos I não pode exigir Algoritmos I.
     -- Não impede ciclos maiores, como A → B → A.
     ADD CONSTRAINT ck_pre_requisito_sem_autorreferencia
-        CHECK (disciplina_id <> requisito_id),
+        CHECK (id_disciplina <> id_disciplina_requisito),
 
     -- Garante que a disciplina que possui o requisito exista.
     -- CASCADE: ao apagar essa disciplina, seus vínculos de
     -- pré-requisito também são removidos.
     ADD CONSTRAINT fk_pre_requisito_disciplina
-        FOREIGN KEY (disciplina_id) REFERENCES disciplina (id)
+        FOREIGN KEY (id_disciplina) REFERENCES disciplina (id_disciplina)
         ON DELETE CASCADE ON UPDATE CASCADE,
 
     -- Garante que a disciplina exigida exista.
     -- RESTRICT: impede apagar uma disciplina que ainda é
     -- utilizada como requisito por outra.
     ADD CONSTRAINT fk_pre_requisito_requisito
-        FOREIGN KEY (requisito_id) REFERENCES disciplina (id)
+        FOREIGN KEY (id_disciplina_requisito) REFERENCES disciplina (id_disciplina)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================

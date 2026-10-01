@@ -404,45 +404,45 @@ ALTER TABLE curriculo_disciplina
 
 ALTER TABLE aluno
     -- Identifica cada aluno de forma única.
-    ADD CONSTRAINT pk_aluno PRIMARY KEY (id),
+    ADD CONSTRAINT pk_aluno PRIMARY KEY (id_aluno),
 
     -- Não permite dois alunos com a mesma matrícula.
-    ADD CONSTRAINT uq_aluno_matricula UNIQUE (matricula),
+    ADD CONSTRAINT uq_aluno_matricula UNIQUE (matricula_aluno),
 
     -- Não permite dois alunos com o mesmo CPF.
-    ADD CONSTRAINT uq_aluno_cpf UNIQUE (cpf),
+    ADD CONSTRAINT uq_aluno_cpf UNIQUE (cpf_aluno),
 
     -- Não permite dois alunos com o mesmo email.
-    ADD CONSTRAINT uq_aluno_email UNIQUE (email),
+    ADD CONSTRAINT uq_aluno_email UNIQUE (email_aluno),
 
     -- Impede matrícula vazia ou apenas com espaços.
     ADD CONSTRAINT ck_aluno_matricula_preenchida
-        CHECK (length(btrim(matricula)) > 0),
+        CHECK (length(btrim(matricula_aluno)) > 0),
 
     -- Impede nome vazio ou apenas com espaços.
     ADD CONSTRAINT ck_aluno_nome_preenchido
-        CHECK (length(btrim(nome)) > 0),
+        CHECK (length(btrim(nome_aluno)) > 0),
 
     -- Único CHECK de formato do projeto, e a exceção se justifica: CPF tem
     -- formato universalmente fixo (11 dígitos), ao contrário de codigo/
     -- matricula, onde regex quebraria a carga real. Não valida dígito
     -- verificador — isso é regra de aplicação, não de integridade estrutural.
     ADD CONSTRAINT ck_aluno_cpf_valido
-        CHECK (cpf ~ '^[0-9]{11}$'),
+        CHECK (cpf_aluno ~ '^[0-9]{11}$'),
 
     -- Mesma política de professor: normaliza em vez de índice funcional.
     ADD CONSTRAINT ck_aluno_email_minusculo
-        CHECK (email = lower(email)),
+        CHECK (email_aluno = lower(email_aluno)),
     ADD CONSTRAINT ck_aluno_email_formato
-        CHECK (email LIKE '%_@_%._%'),
+        CHECK (email_aluno LIKE '%_@_%._%'),
 
     -- CHECKs multi-coluna: enxergam a linha inteira.
     ADD CONSTRAINT ck_aluno_ingresso_apos_nascimento
-        CHECK (ingresso > nascimento),
+        CHECK (ingresso_aluno > nascimento_aluno),
 
     -- Piso defensivo contra digitação (1900) sem inventar idade mínima.
     ADD CONSTRAINT ck_aluno_nascimento_plausivel
-        CHECK (nascimento BETWEEN '1900-01-01' AND current_date),
+        CHECK (nascimento_aluno BETWEEN '1900-01-01' AND current_date),
 
     -- FK COMPOSTA — o ponto da tabela.
     -- As duas colunas isoladas seriam válidas independentemente: nada
@@ -453,14 +453,14 @@ ALTER TABLE aluno
     -- PK ou UNIQUE cobrindo as colunas referenciadas.
     -- Substitui a FK simples para curriculo — declarar as duas seria redundante.
     ADD CONSTRAINT fk_aluno_curriculo_curso
-        FOREIGN KEY (curriculo_id, curso_id) REFERENCES curriculo (id, curso_id)
+        FOREIGN KEY (id_curriculo, id_curso) REFERENCES curriculo (id_curriculo, id_curso)
         ON DELETE RESTRICT ON UPDATE CASCADE,
 
     -- FK simples para curso: NÃO é redundante com a composta. A composta
-    -- garante coerência do par; esta garante que curso_id aponta para curso
+    -- garante coerência do par; esta garante que id_curso aponta para curso
     -- existente mesmo isoladamente, e é o que o modelo declara.
     ADD CONSTRAINT fk_aluno_curso
-        FOREIGN KEY (curso_id) REFERENCES curso (id)
+        FOREIGN KEY (id_curso) REFERENCES curso (id_curso)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 COMMENT ON CONSTRAINT fk_aluno_curriculo_curso ON aluno IS
@@ -473,11 +473,11 @@ COMMENT ON CONSTRAINT fk_aluno_curriculo_curso ON aluno IS
 
 ALTER TABLE matricula
     -- Identifica cada matrícula de forma única.
-    ADD CONSTRAINT pk_matricula PRIMARY KEY (id),
+    ADD CONSTRAINT pk_matricula PRIMARY KEY (id_matricula),
 
     -- Impede que um mesmo aluno se matricule duas vezes na mesma turma.
     ADD CONSTRAINT uq_matricula_aluno_turma
-        UNIQUE (aluno_id, turma_id),
+        UNIQUE (id_aluno, id_turma),
 
     -- Matrícula com data futura é erro de carga ou de relógio.
     ADD CONSTRAINT ck_matricula_data_nao_futura
@@ -490,18 +490,18 @@ ALTER TABLE matricula
     -- após o desligamento. Com CASCADE, apagar um aluno propagaria por
     -- matricula até historico (também CASCADE), destruindo notas e frequência
     -- em silêncio. Desligamento é ativo = false, nunca DELETE — e é por isso
-    -- que a coluna aluno.ativo existe no modelo.
+    -- que a coluna aluno.ativo_aluno existe no modelo.
     -- Note a assimetria deliberada: historico → matricula segue CASCADE,
     -- porque ali a relação É composicional (1:1, não existe sem a matrícula).
     -- O RESTRICT aqui barra a cadeia na origem.
     ADD CONSTRAINT fk_matricula_aluno
-        FOREIGN KEY (aluno_id) REFERENCES aluno (id)
+        FOREIGN KEY (id_aluno) REFERENCES aluno (id_aluno)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 
 ALTER TABLE matricula
     ADD CONSTRAINT fk_matricula_turma
-        FOREIGN KEY (turma_id) REFERENCES turma (id)
+        FOREIGN KEY (id_turma) REFERENCES turma (id_turma)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
@@ -509,15 +509,15 @@ ALTER TABLE matricula
 -- ============================================================
 
 ALTER TABLE historico
-    ADD CONSTRAINT pk_historico PRIMARY KEY (id),
+    ADD CONSTRAINT pk_historico PRIMARY KEY (id_historico),
 
     -- O U do modelo: garante o 1:1.
-    ADD CONSTRAINT uq_historico_matricula UNIQUE (matricula_id),
+    ADD CONSTRAINT uq_historico_matricula UNIQUE (id_matricula),
 
     -- CASCADE: histórico é parte composicional da matrícula. Sem a matrícula,
     -- a linha de notas não tem sujeito.
     ADD CONSTRAINT fk_historico_matricula
-        FOREIGN KEY (matricula_id) REFERENCES matricula (id)
+        FOREIGN KEY (id_matricula) REFERENCES matricula (id_matricula)
         ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ============================================================
@@ -528,13 +528,13 @@ ALTER TABLE historico
 -- CHECKs de formato do payload.
 
 ALTER TABLE log_matricula
-    ADD CONSTRAINT pk_log_matricula PRIMARY KEY (id),
+    ADD CONSTRAINT pk_log_matricula PRIMARY KEY (id_log_matricula),
 
     ADD CONSTRAINT ck_log_matricula_acao_preenchida
-        CHECK (length(btrim(acao)) > 0),
+        CHECK (length(btrim(acao_log_matricula)) > 0),
 
     -- Objeto no topo do jsonb, não array nem escalar. Padroniza o consumo:
     -- quem lê o log sabe que detalhe->>'chave' sempre faz sentido.
     -- jsonb_typeof é IMMUTABLE, então serve em CHECK.
     ADD CONSTRAINT ck_log_matricula_detalhe_objeto
-        CHECK (detalhe IS NULL OR jsonb_typeof(detalhe) = 'object');
+        CHECK (detalhe_log_matricula IS NULL OR jsonb_typeof(detalhe_log_matricula) = 'object');

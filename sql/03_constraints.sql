@@ -11,7 +11,7 @@
 -- EXCLUDE de turma_horario.
 --
 -- Ordem: segue a mesma ordem de tabelas de 02_tabelas.sql. Isso importa
--- pra uma dependência real: a UNIQUE (id, curso_id) de curriculo precisa
+-- pra uma dependência real: a UNIQUE (id_curriculo, id_curso) de curriculo precisa
 -- existir antes da FK composta de aluno que a referencia — por isso
 -- curriculo vem antes de aluno aqui, igual em 02.
 
@@ -21,18 +21,18 @@
 
 ALTER TABLE campus
     -- Identificador único do campus.
-    ADD CONSTRAINT pk_campus PRIMARY KEY (id),
+    ADD CONSTRAINT pk_campus PRIMARY KEY (id_campus),
 
     -- Não permite dois campi com o mesmo nome.
-    ADD CONSTRAINT uq_campus_nome UNIQUE (nome),
+    ADD CONSTRAINT uq_campus_nome UNIQUE (nome_campus),
 
     -- Impede nome vazio ou apenas com espaços.
     ADD CONSTRAINT ck_campus_nome_preenchido
-        CHECK (length(btrim(nome)) > 0),
+        CHECK (length(btrim(nome_campus)) > 0),
 
     -- Impede cidade vazia ou apenas com espaços.
     ADD CONSTRAINT ck_campus_cidade_preenchida
-        CHECK (length(btrim(cidade)) > 0);
+        CHECK (length(btrim(cidade_campus)) > 0);
 
 -- ============================================================
 -- DISCIPLINA
@@ -40,28 +40,28 @@ ALTER TABLE campus
 
 ALTER TABLE disciplina
     -- Identificador único da disciplina.
-    ADD CONSTRAINT pk_disciplina PRIMARY KEY (id),
+    ADD CONSTRAINT pk_disciplina PRIMARY KEY (id_disciplina),
 
     -- Não permite disciplinas com o mesmo código.
-    ADD CONSTRAINT uq_disciplina_codigo UNIQUE (codigo),
+    ADD CONSTRAINT uq_disciplina_codigo UNIQUE (codigo_disciplina),
 
     -- Impede código vazio ou apenas com espaços.
     ADD CONSTRAINT ck_disciplina_codigo_preenchido
-        CHECK (length(btrim(codigo)) > 0),
+        CHECK (length(btrim(codigo_disciplina)) > 0),
 
     -- Impede nome vazio ou apenas com espaços.
     ADD CONSTRAINT ck_disciplina_nome_preenchido
-        CHECK (length(btrim(nome)) > 0),
+        CHECK (length(btrim(nome_disciplina)) > 0),
 
     -- As cargas horárias não podem ser negativas.
     -- Permite uma delas ser 0, por exemplo, disciplina 100% teórica.
     ADD CONSTRAINT ck_disciplina_ch_nao_negativa
-        CHECK (ch_teorica >= 0 AND ch_pratica >= 0),
+        CHECK (ch_teorica_disciplina >= 0 AND ch_pratica_disciplina >= 0),
 
     -- Garante que a carga horária total seja maior que zero.
     -- Ex.: 0 + 0 = 0 não é permitido.
     ADD CONSTRAINT ck_disciplina_ch_total_positiva
-        CHECK (ch_total > 0);
+        CHECK (ch_total_disciplina > 0);
 
 -- ============================================================
 -- PERIODO_LETIVO
@@ -69,22 +69,22 @@ ALTER TABLE disciplina
 
 ALTER TABLE periodo_letivo
     -- Identificador único do período.
-    ADD CONSTRAINT pk_periodo_letivo PRIMARY KEY (id),
+    ADD CONSTRAINT pk_periodo_letivo PRIMARY KEY (id_periodo_letivo),
 
     -- Não permite dois períodos com o mesmo ano e semestre.
-    ADD CONSTRAINT uq_periodo_letivo_ano_semestre UNIQUE (ano, semestre),
+    ADD CONSTRAINT uq_periodo_letivo_ano_semestre UNIQUE (ano_periodo_letivo, semestre_periodo_letivo),
 
     -- Permite apenas o primeiro ou segundo semestre.
     ADD CONSTRAINT ck_periodo_letivo_semestre_valido
-        CHECK (semestre IN (1, 2)),
+        CHECK (semestre_periodo_letivo IN (1, 2)),
 
     -- Evita anos inválidos ou erros de digitação.
     ADD CONSTRAINT ck_periodo_letivo_ano_valido
-        CHECK (ano BETWEEN 2000 AND 2100),
+        CHECK (ano_periodo_letivo BETWEEN 2000 AND 2100),
 
     -- A data final deve ser posterior à data inicial.
     ADD CONSTRAINT ck_periodo_letivo_intervalo
-        CHECK (data_fim > data_inicio);
+        CHECK (data_fim_periodo_letivo > data_inicio_periodo_letivo);
 
 -- ============================================================
 -- PROFESSOR
@@ -92,31 +92,31 @@ ALTER TABLE periodo_letivo
 
 ALTER TABLE professor
     -- Identificador único do professor.
-    ADD CONSTRAINT pk_professor PRIMARY KEY (id),
+    ADD CONSTRAINT pk_professor PRIMARY KEY (id_professor),
 
     -- Não permite dois professores com a mesma matrícula.
-    ADD CONSTRAINT uq_professor_matricula UNIQUE (matricula),
+    ADD CONSTRAINT uq_professor_matricula UNIQUE (matricula_professor),
 
     -- Não permite dois professores com o mesmo email.
-    ADD CONSTRAINT uq_professor_email UNIQUE (email),
+    ADD CONSTRAINT uq_professor_email UNIQUE (email_professor),
 
     -- Impede matrícula vazia ou apenas com espaços.
     ADD CONSTRAINT ck_professor_matricula_preenchida
-        CHECK (length(btrim(matricula)) > 0),
+        CHECK (length(btrim(matricula_professor)) > 0),
 
     -- Impede nome vazio ou apenas com espaços.
     ADD CONSTRAINT ck_professor_nome_preenchido
-        CHECK (length(btrim(nome)) > 0),
+        CHECK (length(btrim(nome_professor)) > 0),
 
     -- Obriga o email a ser armazenado em letras minúsculas.
     -- Ex.: joao@email.com é válido; Joao@email.com não.
     ADD CONSTRAINT ck_professor_email_minusculo
-        CHECK (email = lower(email)),
+        CHECK (email_professor = lower(email_professor)),
 
     -- Validação básica do formato do email.
     -- Não é uma validação completa de RFC.
     ADD CONSTRAINT ck_professor_email_formato
-        CHECK (email LIKE '%_@_%._%');
+        CHECK (email_professor LIKE '%_@_%._%');
 
 -- ============================================================
 -- CURSO

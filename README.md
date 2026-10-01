@@ -4,6 +4,20 @@ Banco de Dados II (CCO072) — Centro Universitário IESB — 2026/2 — Prof. R
 
 Autores: ver [AUTORES.md](AUTORES.md).
 
+## Modelo lógico
+
+Modelo lógico v2 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
+
+[![Modelo lógico v2](docs/modelo_logico_diagrama.png)](modelo_logico.pdf)
+
+Convenção de nomes: atributo = `<atributo>_<tabela>` (ex.: `nome_campus`), PK = `id_<tabela>`, FK = mesmo nome da PK que referencia. Quando há duas FK para a mesma tabela, a segunda leva o papel no nome (`id_disciplina_requisito`).
+
+Tipos enumerados, domínios, `timerange` e colunas geradas (página 2 do PDF):
+
+![Tipos, domínios e colunas geradas](docs/modelo_logico_tipos.png)
+
+PDF completo: [modelo_logico.pdf](modelo_logico.pdf)
+
 ## Pré-requisito
 
 Docker (Desktop ou Engine). Nenhuma outra dependência — PostgreSQL 17 e pgAdmin rodam em contêiner.
@@ -49,6 +63,8 @@ docker compose up -d     # sobe limpo de novo
 docker-compose.yml        # ambiente Docker (PostgreSQL 17 + pgAdmin)
 sql/                       # scripts SQL numerados na ordem de execução
 scripts/                   # ferramental de teste, verificação e automação
+docs/                      # imagens do modelo lógico usadas no README
+modelo_logico.pdf          # modelo lógico v2 (diagrama + tipos/domínios)
 evidencias/explain.md      # EXPLAIN (ANALYZE, BUFFERS) antes/depois dos índices
 AUTORES.md                 # integrantes e frente de cada um
 ```

@@ -131,4 +131,197 @@ FROM (VALUES
 ) AS v(campus, codigo, capacidade, tipo)
 JOIN campus c ON c.nome_campus = v.campus;
 
+-- ============================================================
+-- CURSO
+-- ============================================================
+
+-- ch_total_curso é o total oficial do curso, denormalizado (não dá para ser
+-- coluna gerada: depende de outras linhas).
+--   CCO: 3.280 h de grade + 120 h de atividades complementares = 3.400 h
+--        (valor da própria grade de 2023/1).
+--   ECO: soma das cargas horárias da matriz curricular (3.790 h). A matriz
+--        não informa o total; este é o somatório das disciplinas.
+
+INSERT INTO curso (codigo_curso, nome_curso, grau_curso, ch_total_curso, id_campus)
+SELECT v.codigo, v.nome, v.grau, v.ch_total, c.id_campus
+FROM (VALUES
+    ('CCO', 'Ciência da Computação',     'Bacharelado', 3400, 'Campus Sul (Edson Machado)'),
+    ('ECO', 'Engenharia de Computação',  'Bacharelado', 3790, 'Campus Ceilândia (Liliane Barbosa)')
+) AS v(codigo, nome, grau, ch_total, campus)
+JOIN campus c ON c.nome_campus = v.campus;
+
+-- ============================================================
+-- CURRICULO
+-- ============================================================
+
+-- Uma grade vigente por curso. CCO segue a grade 2023/1; a matriz de ECO não
+-- traz ano, então usa-se 2023 também. Novos currículos nascem ativos
+-- (DEFAULT true).
+
+INSERT INTO curriculo (id_curso, ano_vigencia_curriculo)
+SELECT id_curso, 2023
+FROM curso
+WHERE codigo_curso IN ('CCO', 'ECO');
+
+-- ============================================================
+-- FERIADO
+-- ============================================================
+
+-- id_campus NULL = feriado nacional (vale para todos os campi).
+-- Dia do Evangélico é feriado do DF: aparece uma vez por campus. A mesma data
+-- em campi diferentes é permitida; a duplicata de um nacional não seria
+-- (UNIQUE NULLS NOT DISTINCT em uq_feriado_data_campus).
+
+INSERT INTO feriado (data_feriado, descricao_feriado, id_campus) VALUES
+    ('2025-04-18', 'Sexta-feira Santa',           NULL),
+    ('2025-04-21', 'Tiradentes',                  NULL),
+    ('2025-05-01', 'Dia do Trabalho',             NULL),
+    ('2025-06-19', 'Corpus Christi',              NULL),
+    ('2025-09-07', 'Independência do Brasil',     NULL),
+    ('2025-10-12', 'Nossa Senhora Aparecida',     NULL),
+    ('2025-11-02', 'Finados',                     NULL),
+    ('2025-11-15', 'Proclamação da República',    NULL),
+    ('2025-11-20', 'Dia da Consciência Negra',    NULL),
+    ('2025-12-25', 'Natal',                       NULL),
+    ('2026-04-03', 'Sexta-feira Santa',           NULL),
+    ('2026-04-21', 'Tiradentes',                  NULL),
+    ('2026-05-01', 'Dia do Trabalho',             NULL),
+    ('2026-06-04', 'Corpus Christi',              NULL),
+    ('2026-09-07', 'Independência do Brasil',     NULL),
+    ('2026-10-12', 'Nossa Senhora Aparecida',     NULL),
+    ('2026-11-02', 'Finados',                     NULL),
+    ('2026-11-15', 'Proclamação da República',    NULL),
+    ('2026-11-20', 'Dia da Consciência Negra',    NULL),
+    ('2026-12-25', 'Natal',                       NULL);
+
+INSERT INTO feriado (data_feriado, descricao_feriado, id_campus)
+SELECT d.data_feriado, 'Dia do Evangélico (DF)', c.id_campus
+FROM (VALUES ('2025-11-30'::date), ('2026-11-30'::date)) AS d(data_feriado)
+CROSS JOIN campus c;
+
+-- ============================================================
+-- DISCIPLINA
+-- ============================================================
+
+-- Catálogo único para os dois cursos: disciplina independe de curso e
+-- currículo (o vínculo vive em curriculo_disciplina). Disciplinas que as duas
+-- grades têm em comum, com a mesma carga horária, são uma linha só.
+-- Exemplo: Cálculo II e Estrutura de Dados.
+--   - "Banco de Dados" de ECO é a mesma disciplina que "Banco de Dados I" de CCO.
+--   - "Redes de Computadores" de ECO é "Redes de Computadores I" de CCO.
+--   - Atividades de Extensão, Projetos Integradores, Estágios e TCC/Projeto de
+--     Graduação são disciplinas distintas, uma por etapa. A matriz de ECO repete
+--     o nome "Projeto de Extensão na Educação Superior" em três semestres; aqui
+--     ganham sufixo I, II e III para o catálogo não ter nomes duplicados.
+--   - "Eletiva" (CCO) e "Optativa" (ECO) são vagas na grade, não matérias.
+--
+-- ch_teorica_disciplina + ch_pratica_disciplina dão a carga total (coluna
+-- gerada). Onde a grade só informa o total do módulo, a carga foi distribuída
+-- para fechar esse total. A divisão teórica/prática é uma estimativa:
+-- laboratórios, extensão, projetos e estágios são 100% práticos.
+-- ementa_disciplina fica NULL: pode ser cadastrada depois.
+--
+-- Código: mnemônico de até 10 caracteres.
+
+INSERT INTO disciplina
+    (codigo_disciplina, nome_disciplina, ch_teorica_disciplina, ch_pratica_disciplina)
+VALUES
+    -- Comuns a CCO e ECO (25)
+    ('ALP1', 'Algoritmos e Programação de Computadores I',  40, 20),
+    ('ALP2', 'Algoritmos e Programação de Computadores II', 40, 20),
+    ('CAL1', 'Cálculo I',                                   90,  0),
+    ('CAL2', 'Cálculo II',                                  60,  0),
+    ('SDG',  'Sistemas Digitais',                           40, 20),
+    ('BD1',  'Banco de Dados I',                            40, 20),
+    ('AOC',  'Arquitetura e Organização de Computadores',   40, 20),
+    ('ED',   'Estrutura de Dados',                          40, 20),
+    ('POO',  'Programação Orientada a Objetos',             40, 20),
+    ('PES',  'Probabilidade e Estatística',                 60,  0),
+    ('CNU',  'Cálculo Numérico',                            60,  0),
+    ('ANA',  'Análise de Algoritmos',                       60,  0),
+    ('ESW',  'Engenharia de Software',                      40, 20),
+    ('SO',   'Sistemas Operacionais',                       40, 20),
+    ('IA1',  'Inteligência Artificial',                     40, 20),
+    ('CGR',  'Computação Gráfica',                          40, 20),
+    ('PLP',  'Paradigmas de Linguagens de Programação',     60,  0),
+    ('PDM',  'Programação para Dispositivos Móveis',        30, 30),
+    ('TWB',  'Tecnologias Web',                             30, 30),
+    ('RC1',  'Redes de Computadores I',                     40, 20),
+    ('TGR',  'Teoria dos Grafos',                           60,  0),
+    ('LFA',  'Linguagens Formais e Autômatos',              60,  0),
+    ('SDI',  'Sistemas Distribuídos',                       40, 20),
+    ('CMP',  'Compiladores',                                40, 20),
+    ('TCO',  'Tópicos em Computação',                       60,  0),
+
+    -- Só Ciência da Computação (31)
+    ('TMA',  'Tópicos de Matemática',                       60,  0),
+    ('AEX1', 'Atividade de Extensão I',                      0, 30),
+    ('AEX2', 'Atividade de Extensão II',                     0, 30),
+    ('AEX3', 'Atividade de Extensão III',                    0, 30),
+    ('AEX4', 'Atividade de Extensão IV',                     0, 30),
+    ('AEX5', 'Atividade de Extensão V',                      0, 30),
+    ('FLG',  'Fundamentos de Lógica',                       60,  0),
+    ('GAV',  'Geometria Analítica e Vetores',               60,  0),
+    ('MDI',  'Matemática Discreta',                         60,  0),
+    ('LP1',  'Laboratório de Práticas I',                    0, 60),
+    ('LP2',  'Laboratório de Práticas II',                   0, 30),
+    ('CSP',  'Cultura, Sociedade e Política',               60,  0),
+    ('ALG',  'Álgebra Linear',                              60,  0),
+    ('DHA',  'Direitos Humanos e Ambientais',               60,  0),
+    ('TCP',  'Teoria da Computação',                        60,  0),
+    ('PI2A', 'Projeto Integrador 2A',                        0, 90),
+    ('BD2',  'Banco de Dados II',                           40, 20),
+    ('GTI',  'Governança de TI e Mapeamento de Processos',  60,  0),
+    ('PI3A', 'Projeto Integrador 3A',                        0, 30),
+    ('PPA',  'Programação Paralela',                        40, 20),
+    ('PI3B', 'Projeto Integrador 3B',                        0, 90),
+    ('ELV',  'Eletiva',                                     60,  0),
+    ('IA2',  'Inteligência Artificial II',                  40, 20),
+    ('TBD',  'Tópicos em Banco de Dados',                   40, 20),
+    ('EST1', 'Estágio Supervisionado I',                     0, 80),
+    ('PGA',  'Projeto de Graduação CCO A',                  20, 60),
+    ('PIM',  'Processamento de Imagens',                    40, 20),
+    ('SCM',  'Sistemas de Comunicação',                     60,  0),
+    ('STR',  'Sistemas de Tempo Real',                      40, 20),
+    ('EST2', 'Estágio Supervisionado II',                    0, 80),
+    ('PGB',  'Projeto de Graduação CCO B',                  20, 60),
+
+    -- Só Engenharia de Computação (36)
+    ('PEN',  'Práticas de Engenharia',                      30, 30),
+    ('LCA',  'Laboratório de Circuitos Analógicos',          0, 30),
+    ('QMA',  'Química e Materiais',                         40, 20),
+    ('EMC',  'Estruturas Matemáticas para Computação',      60,  0),
+    ('FCC',  'Fundamentos de Cálculo para Computação e Engenharia', 60, 0),
+    ('SCD',  'Sociedade, Cultura, Direitos Humanos e Ambientais',   60, 0),
+    ('ALA',  'Álgebra Linear e Aplicações',                 60,  0),
+    ('LSD',  'Laboratório de Sistemas Digitais',             0, 30),
+    ('EGR',  'Expressão Gráfica',                           10, 20),
+    ('EDG',  'Eletrônica Digital',                          40, 20),
+    ('PIED', 'Projeto Integrador - Eletrônica Digital',      0, 30),
+    ('PEE1', 'Projeto de Extensão na Educação Superior I',   0, 130),
+    ('FEC',  'Física para Engenharia da Computação',        60,  0),
+    ('CEL',  'Circuitos Elétricos',                         40, 20),
+    ('MME',  'Métodos Matemáticos em Engenharia',           60,  0),
+    ('PEE2', 'Projeto de Extensão na Educação Superior II',  0, 130),
+    ('CAL3', 'Cálculo III',                                 60,  0),
+    ('ASI',  'Análise de Sinais',                           60,  0),
+    ('EBA',  'Eletrônica Básica',                           40, 20),
+    ('CEL2', 'Circuitos Elétricos II',                      40, 20),
+    ('MSF',  'Mecânica dos Sólidos e Fenômenos de Transporte', 60, 0),
+    ('SLI',  'Sistemas Lineares',                           60,  0),
+    ('SEM',  'Sistemas Embarcados',                         40, 20),
+    ('PISE', 'Projeto Integrador - Sistemas Embarcados',     0, 30),
+    ('PEE3', 'Projeto de Extensão na Educação Superior III', 0, 130),
+    ('ADE',  'Administração e Economia',                    60,  0),
+    ('PDS',  'Processamento Digital de Sinais',             40, 20),
+    ('MCS',  'Modelagem e Controle de Sistemas',            60,  0),
+    ('TCC1', 'Trabalho de Conclusão de Curso I - Eng Comp', 20, 40),
+    ('PSM',  'Processamento de Sinais Multimídia',          40, 20),
+    ('ESA',  'Estágio Supervisionado - Aplicação Profissional',  0, 80),
+    ('OPT',  'Optativa',                                    60,  0),
+    ('TIC',  'Teoria da Informação e Codificação',          60,  0),
+    ('TCC2', 'Trabalho de Conclusão de Curso II - Eng Comp', 20, 40),
+    ('ESI',  'Estágio Supervisionado - Integração Profissional', 0, 80),
+    ('MDD',  'Mineração de Dados',                          40, 20);
+
 COMMIT;

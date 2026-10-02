@@ -687,4 +687,74 @@ BEGIN
 END
 $$;
 
+-- ============================================================
+-- ALUNO
+-- ============================================================
+
+-- 120 alunos, 40 por coorte, todos ingressantes em 2025/1:
+--   id_aluno   1..40   -> CCODM (Ciência da Computação, matutino)
+--   id_aluno  41..80   -> CCONM (Ciência da Computação, noturno)
+--   id_aluno  81..120  -> ECONM (Engenharia de Computação, noturno)
+-- A coorte é (id_aluno - 1) / 40, e o bloco de matrículas usa essa mesma
+-- conta. A ordem do INSERT é fixa (ORDER BY) para os ids saírem sequenciais.
+--
+-- Tudo é sintético e determinístico:
+--   - nome: primeiro + nome do meio + sobrenome, de três listas. O primeiro
+--     (30 opções) e o último (31, número primo com 30) combinam com
+--     i mod 30 e i mod 31, então o par primeiro/último nunca se repete
+--     nos 120 alunos.
+--   - e-mail: primeiro.ultimo@iesb.edu.br, em minúsculas e sem acento
+--     (ck_aluno_email_minusculo exige minúsculas). Ex.: Ana Alves Almeida ->
+--     ana.almeida@iesb.edu.br. Como o par primeiro/último é único, o e-mail
+--     também é.
+--   - matrícula: '20251' + número com 4 dígitos (ingresso em 2025/1).
+--   - CPF: 11 dígitos com zeros à esquerda (00000000001, ...). É inválido por
+--     construção (a base 000000000 só tem DV 00), então nunca coincide com um
+--     CPF real. O banco só confere o formato (ck_aluno_cpf_valido), não o DV.
+--   - nascimento: 2005 a 2007, com 1 em cada 9 alunos mais velho (~10 anos),
+--     para haver variedade de idade.
+--
+-- id_curso e id_curriculo saem do mesmo currículo, o que satisfaz a FK
+-- composta fk_aluno_curriculo_curso (o currículo pertence ao curso do aluno).
+
+INSERT INTO aluno
+    (matricula_aluno, nome_aluno, cpf_aluno, email_aluno, nascimento_aluno,
+     id_curso, id_curriculo, ingresso_aluno)
+WITH nomes AS (
+    SELECT
+        ARRAY['Ana','Bruno','Camila','Daniel','Eduarda','Felipe','Gabriela','Heitor',
+              'Isabela','João','Karina','Lucas','Mariana','Nicolas','Olívia','Pedro',
+              'Rafaela','Samuel','Tatiane','Vinícius','Yasmin','Arthur','Beatriz',
+              'Caio','Diego','Elisa','Fernando','Giovana','Igor','Júlia'] AS primeiros,
+        ARRAY['Alves','Barros','Cardoso','Dias','Duarte','Farias','Gomes','Lacerda',
+              'Macedo','Machado','Matos','Mendes','Moreira','Nascimento','Nunes',
+              'Oliveira','Pacheco','Pereira','Ramos','Ribeiro','Rocha','Santana',
+              'Teixeira','Vasconcelos','Xavier'] AS meios,
+        ARRAY['Almeida','Araújo','Azevedo','Batista','Borges','Brandão','Campos',
+              'Castro','Coelho','Correia','Costa','Cunha','Fernandes','Ferreira',
+              'Fonseca','Guimarães','Lima','Lopes','Marques','Martins','Medeiros',
+              'Miranda','Monteiro','Moraes','Pinto','Ramalho','Rodrigues','Sampaio',
+              'Silveira','Tavares','Viana'] AS ultimos
+)
+SELECT
+    '20251' || lpad(g.i::text, 4, '0'),
+    n.primeiros[(g.i - 1) % 30 + 1] || ' ' ||
+        n.meios[(g.i * 7) % 25 + 1] || ' ' ||
+        n.ultimos[(g.i - 1) % 31 + 1],
+    lpad(g.i::text, 11, '0'),
+    translate(lower(n.primeiros[(g.i - 1) % 30 + 1] || '.' || n.ultimos[(g.i - 1) % 31 + 1]),
+              'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')
+        || '@iesb.edu.br',
+    DATE '2005-01-01' + ((g.i * 37) % 1000) - CASE WHEN g.i % 9 = 0 THEN 3650 ELSE 0 END,
+    k.id_curso,
+    k.id_curriculo,
+    DATE '2025-02-03'
+FROM generate_series(1, 120) AS g(i)
+CROSS JOIN nomes n
+JOIN (VALUES (0, 'CCO'), (1, 'CCO'), (2, 'ECO')) AS co(coorte, curso)
+  ON co.coorte = (g.i - 1) / 40
+JOIN curso c ON c.codigo_curso = co.curso
+JOIN curriculo k ON k.id_curso = c.id_curso
+ORDER BY g.i;
+
 COMMIT;

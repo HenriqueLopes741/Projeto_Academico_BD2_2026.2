@@ -757,4 +757,236 @@ JOIN curso c ON c.codigo_curso = co.curso
 JOIN curriculo k ON k.id_curso = c.id_curso
 ORDER BY g.i;
 
+-- ============================================================
+-- MATRICULA
+-- ============================================================
+
+-- Cada aluno cursa, em cada semestre, as turmas do módulo da sua coorte:
+-- 28 matrículas em CCO (8+8+6+6) e 27 em ECO (7+7+7+6), ou seja,
+-- 80 x 28 + 40 x 27 = 3.320 matrículas.
+--
+-- Coorte do aluno = (id_aluno - 1) / 40, a mesma conta do bloco de alunos; o
+-- prefixo do código da turma (CCODM, CCONM, ECONM) liga o aluno às turmas.
+--
+-- Status:
+--   - 2026/2 (corrente): todas 'ativa'. Cada turma fica com 40 matrículas
+--     ativas e 41 vagas, ou seja, 1 vaga livre: a "última vaga" do Marco 2.
+--   - semestres encerrados: 'concluida', salvo cerca de 1 em 97, que é
+--     'trancada' (escolhido por uma conta fixa sobre aluno e turma, não por
+--     sorteio). 'cancelada' não aparece na carga.
+--
+-- Não há repetência: cada aluno cursa o módulo de cada semestre uma vez, mesmo
+-- que tenha reprovado ou trancado alguma disciplina.
+--
+-- data_matricula: entre 5 e 18 dias antes do início do período, em horário de
+-- Brasília (timestamptz). Todas no passado, como exige
+-- ck_matricula_data_nao_futura.
+-- UNIQUE (id_aluno, id_turma) é satisfeita: cada par aparece uma vez.
+
+INSERT INTO matricula (id_aluno, id_turma, data_matricula, status_matricula)
+SELECT
+    a.id_aluno,
+    t.id_turma,
+    ((pl.data_inicio_periodo_letivo - (5 + a.id_aluno % 14)) + time '08:00'
+        + (a.id_aluno % 9) * interval '1 hour') AT TIME ZONE 'America/Sao_Paulo',
+    (CASE
+         WHEN pl.ano_periodo_letivo = 2026 AND pl.semestre_periodo_letivo = 2 THEN 'ativa'
+         WHEN (a.id_aluno * 31 + t.id_turma * 17) % 97 = 0 THEN 'trancada'
+         ELSE 'concluida'
+     END)::status_mat_t
+FROM aluno a
+JOIN (VALUES (0, 'CCODM'), (1, 'CCONM'), (2, 'ECONM')) AS co(coorte, prefixo)
+  ON co.coorte = (a.id_aluno - 1) / 40
+JOIN turma t ON left(t.codigo_turma, 5) = co.prefixo
+JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+ORDER BY a.id_aluno, pl.ano_periodo_letivo, pl.semestre_periodo_letivo, t.id_turma;
+
+-- ============================================================
+-- HISTORICO
+-- ============================================================
+
+-- Uma linha por matrícula (relação 1:1, uq_historico_matricula). Notas e
+-- frequência saem de um hash fixo de (aluno, turma), sem random():
+--
+--   concluida: A1 e A2 entre 4,0 e 10,0. Se a média de A1 e A2 ficar abaixo de
+--              6, 3 em cada 4 alunos fazem a P3 (entre 5,0 e 10,0), que
+--              substitui a menor nota. Frequência entre 72 e 100.
+--   ativa:     semestre em curso, só a A1 lançada e frequência parcial. A2 e P3
+--              ficam NULL, então media_final_historico é NULL (ausência não é
+--              zero) e a situação é 'cursando'.
+--   trancada:  sem notas, frequência baixa, situação 'trancada'.
+--
+-- media_final_historico é coluna gerada e não é inserida. A situação das
+-- matrículas concluídas é calculada logo abaixo, a partir da média que o
+-- próprio banco gerou. Assim a regra de cálculo não é duplicada aqui.
+
+INSERT INTO historico
+    (id_matricula, nota_a1_historico, nota_a2_historico, nota_p3_historico,
+     frequencia_historico, situacao_historico)
+WITH base AS (
+    SELECT m.id_matricula,
+           m.status_matricula AS st,
+           (m.id_aluno * 7919 + m.id_turma * 104729) % 1000003 AS h
+      FROM matricula m
+),
+notas AS (
+    SELECT id_matricula, st, h,
+           CASE WHEN st = 'trancada' THEN NULL
+                ELSE (4 + (h % 61) / 10.0)::numeric(4,2) END AS a1,
+           CASE WHEN st = 'concluida'
+                THEN (4 + ((h / 61) % 61) / 10.0)::numeric(4,2) END AS a2
+      FROM base
+)
+SELECT
+    id_matricula,
+    a1,
+    a2,
+    CASE WHEN st = 'concluida' AND a1 * 0.4 + a2 * 0.6 < 6 AND h % 4 <> 0
+         THEN (5 + ((h / 3721) % 51) / 10.0)::numeric(4,2) END,
+    (CASE st
+         WHEN 'concluida' THEN 72 + ((h / 227) % 29)
+         WHEN 'ativa'     THEN 85 + ((h / 227) % 16)
+         ELSE                  30 + ((h / 227) % 40)
+     END)::numeric(5,2),
+    (CASE st WHEN 'trancada' THEN 'trancada' ELSE 'cursando' END)::situacao_t
+FROM notas
+ORDER BY id_matricula;
+
+-- Situação das matrículas concluídas: aprovado com média >= 6 e frequência
+-- >= 75; reprovação por nota, por falta ou pelas duas (reprovado_nota_falta).
+
+UPDATE historico h
+   SET situacao_historico = (CASE
+           WHEN h.media_final_historico >= 6 AND h.frequencia_historico >= 75 THEN 'aprovado'
+           WHEN h.media_final_historico <  6 AND h.frequencia_historico >= 75 THEN 'reprovado_nota'
+           WHEN h.media_final_historico >= 6                                  THEN 'reprovado_falta'
+           ELSE 'reprovado_nota_falta'
+       END)::situacao_t
+  FROM matricula m
+ WHERE m.id_matricula = h.id_matricula
+   AND m.status_matricula = 'concluida';
+
+-- ============================================================
+-- LOG_MATRICULA
+-- ============================================================
+
+-- Trilha de auditoria. Um evento 'criada' por matrícula (no instante do
+-- INSERT, com o estado inicial 'ativa'), mais um 'trancada' para cada
+-- matrícula trancada. usuario_log_matricula fica com o DEFAULT (current_user).
+--
+-- A última linha é de propósito: um evento que aponta para uma matrícula que
+-- não existe mais. log_matricula não tem FK em id_matricula, e é por isso que
+-- o log consegue guardar a remoção que a auditoria precisa registrar.
+
+INSERT INTO log_matricula
+    (id_matricula, acao_log_matricula, ocorrido_em_log_matricula, detalhe_log_matricula)
+SELECT id_matricula, acao, quando, detalhe
+FROM (
+    SELECT m.id_matricula,
+           'criada' AS acao,
+           m.data_matricula AS quando,
+           jsonb_build_object('id_aluno', m.id_aluno, 'id_turma', m.id_turma,
+                              'status', 'ativa', 'origem', 'carga') AS detalhe
+      FROM matricula m
+    UNION ALL
+    SELECT m.id_matricula,
+           'trancada',
+           ((pl.data_inicio_periodo_letivo + 30) + time '10:00') AT TIME ZONE 'America/Sao_Paulo',
+           jsonb_build_object('status_anterior', 'ativa', 'status_novo', 'trancada',
+                              'origem', 'carga')
+      FROM matricula m
+      JOIN turma t ON t.id_turma = m.id_turma
+      JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+     WHERE m.status_matricula = 'trancada'
+) ev
+ORDER BY id_matricula, quando;
+
+INSERT INTO log_matricula
+    (id_matricula, acao_log_matricula, ocorrido_em_log_matricula, detalhe_log_matricula)
+SELECT max(id_matricula) + 1000,
+       'removida',
+       TIMESTAMPTZ '2026-03-10 14:00:00-03',
+       jsonb_build_object('motivo', 'matrícula duplicada removida pela secretaria',
+                          'origem', 'carga')
+  FROM matricula;
+
+-- ============================================================
+-- CONFERÊNCIA FINAL
+-- ============================================================
+
+-- Sequences: nenhum id foi inserido na mão, então as sequences das colunas
+-- IDENTITY já estão à frente dos dados e não precisam de setval.
+--
+-- Confere os mínimos do enunciado (100 alunos, 6 turmas, 300 matrículas) e as
+-- propriedades que o resto do projeto assume. Se algo falhar, a carga para
+-- aqui em vez de seguir com dados incoerentes.
+
+DO $$
+DECLARE
+    n_alunos     integer;
+    n_turmas     integer;
+    n_matriculas integer;
+    violacoes    integer;
+BEGIN
+    SELECT count(*) INTO n_alunos     FROM aluno;
+    SELECT count(*) INTO n_turmas     FROM turma;
+    SELECT count(*) INTO n_matriculas FROM matricula;
+
+    IF n_alunos < 100 OR n_turmas < 6 OR n_matriculas < 300 THEN
+        RAISE EXCEPTION 'carga abaixo do mínimo do enunciado: % alunos, % turmas, % matrículas',
+            n_alunos, n_turmas, n_matriculas;
+    END IF;
+
+    -- 1:1 entre matrícula e histórico
+    SELECT count(*) INTO violacoes
+      FROM matricula m
+     WHERE NOT EXISTS (SELECT 1 FROM historico h WHERE h.id_matricula = m.id_matricula);
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % matrícula(s) sem histórico', violacoes;
+    END IF;
+
+    -- nenhuma turma passa das vagas (ativas + concluídas ocupam vaga)
+    SELECT count(*) INTO violacoes
+      FROM (SELECT t.id_turma
+              FROM turma t
+              JOIN matricula m ON m.id_turma = t.id_turma
+               AND m.status_matricula IN ('ativa', 'concluida')
+             GROUP BY t.id_turma, t.vagas_turma
+            HAVING count(*) > t.vagas_turma) x;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % turma(s) com mais matrículas que vagas', violacoes;
+    END IF;
+
+    -- cada turma de 2026/2 tem exatamente 1 vaga livre (cenário da última vaga)
+    SELECT count(*) INTO violacoes
+      FROM turma t
+      JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+     WHERE pl.ano_periodo_letivo = 2026 AND pl.semestre_periodo_letivo = 2
+       AND t.vagas_turma - (SELECT count(*) FROM matricula m
+                             WHERE m.id_turma = t.id_turma
+                               AND m.status_matricula = 'ativa') <> 1;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % turma(s) de 2026/2 sem exatamente 1 vaga livre', violacoes;
+    END IF;
+
+    -- situação coerente com o estado da matrícula
+    SELECT count(*) INTO violacoes
+      FROM historico h
+      JOIN matricula m ON m.id_matricula = h.id_matricula
+     WHERE (m.status_matricula = 'concluida'
+            AND (h.media_final_historico IS NULL
+                 OR h.situacao_historico IN ('cursando', 'trancada')))
+        OR (m.status_matricula = 'ativa'   AND h.situacao_historico <> 'cursando')
+        OR (m.status_matricula = 'trancada' AND h.situacao_historico <> 'trancada');
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % histórico(s) incoerente(s) com o status da matrícula', violacoes;
+    END IF;
+
+    RAISE NOTICE 'carga ok: % alunos, % turmas, % matrículas', n_alunos, n_turmas, n_matriculas;
+END
+$$;
+
 COMMIT;
+
+-- Estatísticas atualizadas para o planejador (úteis para os EXPLAIN do Marco 2).
+ANALYZE;

@@ -324,4 +324,205 @@ VALUES
     ('ESI',  'Estágio Supervisionado - Integração Profissional', 0, 80),
     ('MDD',  'Mineração de Dados',                          40, 20);
 
+-- ============================================================
+-- CURRICULO_DISCIPLINA
+-- ============================================================
+
+-- Composição de cada grade: em que semestre da GRADE (1, 2, 3...) cada
+-- disciplina aparece. Não confundir com periodo_letivo, que é o semestre de
+-- calendário. Cada linha do VALUES é um módulo da grade:
+--   CCO: 1A=1, 1B=2, 2A=3, 2B=4, 3A=5, 3B=6, 4A=7, 4B=8
+--   ECO: mesma regra, até 5B=10.
+--
+-- Tudo é 'obrigatoria', exceto as vagas de escolha: 'Eletiva' (CCO) é
+-- 'eletiva' e 'Optativa' (ECO) é 'optativa'.
+--
+-- Um código com erro de digitação não some em silêncio: o subselect devolve
+-- NULL e a coluna id_disciplina (NOT NULL) rejeita a linha.
+
+INSERT INTO curriculo_disciplina
+    (id_curriculo, id_disciplina, periodo_curriculo_disciplina, tipo_curriculo_disciplina)
+SELECT
+    (SELECT k.id_curriculo
+       FROM curriculo k JOIN curso c ON c.id_curso = k.id_curso
+      WHERE c.codigo_curso = m.curso),
+    (SELECT d.id_disciplina FROM disciplina d WHERE d.codigo_disciplina = u.codigo),
+    m.periodo,
+    (CASE u.codigo
+         WHEN 'ELV' THEN 'eletiva'
+         WHEN 'OPT' THEN 'optativa'
+         ELSE 'obrigatoria'
+     END)::tipo_disc_t
+FROM (VALUES
+    -- Ciência da Computação (grade 2023/1) — 56 disciplinas
+    ('CCO', 1, ARRAY['TMA','ALP1','AEX1','FLG','GAV','MDI','LP1','CSP']),
+    ('CCO', 2, ARRAY['CAL1','ALP2','ALG','AEX2','BD1','DHA','SDG','LP2']),
+    ('CCO', 3, ARRAY['CAL2','AOC','AEX3','ED','PI2A','TCP']),
+    ('CCO', 4, ARRAY['BD2','ESW','IA1','POO','SO','GTI']),
+    ('CCO', 5, ARRAY['AEX4','CNU','CGR','PLP','PDM','PI3A','TWB','PES']),
+    ('CCO', 6, ARRAY['AEX5','LFA','PPA','PI3B','RC1','TGR']),
+    ('CCO', 7, ARRAY['ANA','ELV','IA2','SDI','TBD','EST1','PGA']),
+    ('CCO', 8, ARRAY['CMP','PIM','SCM','STR','TCO','EST2','PGB']),
+    -- Engenharia de Computação — 61 disciplinas
+    ('ECO', 1,  ARRAY['PEN','LCA','QMA','ALP1','EMC','FCC','SCD']),
+    ('ECO', 2,  ARRAY['SDG','CAL1','ALP2','ALA','BD1','LSD','EGR']),
+    ('ECO', 3,  ARRAY['EDG','PIED','PEE1','AOC','CAL2','ED','FEC']),
+    ('ECO', 4,  ARRAY['CEL','MME','PEE2','CAL3','PES','POO']),
+    ('ECO', 5,  ARRAY['ASI','EBA','CEL2','CNU','MSF','ANA']),
+    ('ECO', 6,  ARRAY['SLI','SEM','PISE','PEE3','IA1','CGR','ADE']),
+    ('ECO', 7,  ARRAY['PDS','MCS','ESW','PDM','PLP']),
+    ('ECO', 8,  ARRAY['TWB','RC1','TGR','LFA','SO']),
+    ('ECO', 9,  ARRAY['TCC1','PSM','ESA','OPT','SDI']),
+    ('ECO', 10, ARRAY['TIC','TCC2','ESI','TCO','CMP','MDD'])
+) AS m(curso, periodo, codigos)
+CROSS JOIN LATERAL unnest(m.codigos) AS u(codigo);
+
+-- ============================================================
+-- PRE_REQUISITO
+-- ============================================================
+
+-- Fonte: "Tabela de Pré-Requisitos" de CCO e de Engenharia de Computação.
+-- Leitura de cada linha: (disciplina, requisito, vínculo) = a disciplina exige
+-- o requisito. Regras de transcrição:
+--   - "deve ser cursado junto com" e "(matr)"  -> co_requisito
+--   - os demais                                -> pre_requisito
+--   - um requisito que aparece nas duas tabelas entra uma vez só
+--
+-- Fica de fora o que não é "disciplina exige disciplina":
+--   - "75% CH concluída" (Tópicos em Computação) e a regra de 75% das
+--     disciplinas teóricas para TCC e Projeto de Graduação. É uma regra sobre o
+--     histórico do aluno, não uma relação entre duas disciplinas. Fica para a
+--     aplicação/consulta.
+--   - AMM, Automação e Robótica, Princípios de Controle e Projeto Integrador 3A
+--     de Engenharia: a tabela os cita, mas não estão na matriz curricular de
+--     Engenharia usada no catálogo.
+--
+-- pre_requisito é do catálogo, não de um currículo (a tabela não tem curso).
+-- Duas disciplinas têm exigência diferente em cada curso, e as duas linhas
+-- entram:
+--   Sistemas Digitais:      CCO exige Fund. de Lógica; ECO exige Práticas de Eng.
+--   Linguagens Formais:     CCO exige Teoria da Computação; ECO exige Estr. de Dados.
+-- Para um aluno, só valem os requisitos que existem na grade do curso dele.
+-- A conferência no fim do bloco trata exatamente isso.
+--
+-- As cadeias mais longas, só de pre_requisito, têm 4 níveis, ex.:
+-- Compiladores -> Linguagens Formais -> Estrutura de Dados -> Algoritmos II ->
+-- Algoritmos I.
+
+INSERT INTO pre_requisito
+    (id_disciplina, id_disciplina_requisito, vinculo_pre_requisito)
+SELECT
+    (SELECT id_disciplina FROM disciplina WHERE codigo_disciplina = v.disciplina),
+    (SELECT id_disciplina FROM disciplina WHERE codigo_disciplina = v.requisito),
+    v.vinculo::vinculo_t
+FROM (VALUES
+    -- Tabela de CCO
+    ('ALG',  'GAV',  'pre_requisito'),
+    ('ANA',  'ED',   'pre_requisito'),
+    ('ALP2', 'ALP1', 'pre_requisito'),
+    ('AOC',  'SDG',  'pre_requisito'),
+    ('BD1',  'MDI',  'pre_requisito'),
+    ('BD2',  'BD1',  'pre_requisito'),
+    ('CNU',  'CAL2', 'pre_requisito'),
+    ('CAL1', 'TMA',  'pre_requisito'),
+    ('CAL2', 'CAL1', 'pre_requisito'),
+    ('CMP',  'LFA',  'pre_requisito'),
+    ('CGR',  'CAL1', 'pre_requisito'),
+    ('CGR',  'ALG',  'pre_requisito'),
+    ('ESW',  'BD1',  'pre_requisito'),
+    ('ED',   'ALP2', 'pre_requisito'),
+    ('IA1',  'ALP2', 'pre_requisito'),
+    ('IA2',  'IA1',  'pre_requisito'),
+    ('LFA',  'TCP',  'pre_requisito'),
+    ('PDM',  'POO',  'pre_requisito'),
+    ('PDM',  'ED',   'pre_requisito'),
+    ('PLP',  'ED',   'pre_requisito'),
+    ('POO',  'ALP2', 'pre_requisito'),
+    ('PES',  'CAL1', 'pre_requisito'),
+    ('PIM',  'CAL2', 'pre_requisito'),
+    ('PPA',  'ED',   'pre_requisito'),
+    ('PI2A', 'ED',   'co_requisito'),
+    ('PI3A', 'PDM',  'co_requisito'),
+    ('PI3B', 'TGR',  'co_requisito'),
+    ('RC1',  'PES',  'pre_requisito'),
+    ('SCM',  'PES',  'pre_requisito'),
+    ('SCM',  'ALG',  'pre_requisito'),
+    ('SDG',  'FLG',  'pre_requisito'),
+    ('SDI',  'SO',   'pre_requisito'),
+    ('STR',  'ED',   'pre_requisito'),
+    ('SO',   'ALP2', 'pre_requisito'),
+    ('TCP',  'FLG',  'pre_requisito'),
+    ('TGR',  'ED',   'pre_requisito'),
+    ('TBD',  'BD2',  'pre_requisito'),
+    -- Tabela de Engenharia de Computação (só o que não repete a de CCO)
+    ('ASI',  'MME',  'pre_requisito'),
+    ('CAL3', 'CAL2', 'pre_requisito'),
+    ('CEL',  'PEN',  'pre_requisito'),
+    ('CEL2', 'CEL',  'pre_requisito'),
+    ('CEL2', 'MME',  'pre_requisito'),
+    ('EDG',  'SDG',  'pre_requisito'),
+    ('EBA',  'CEL',  'pre_requisito'),
+    ('LFA',  'ED',   'pre_requisito'),
+    ('MME',  'CAL2', 'co_requisito'),
+    ('PDS',  'SLI',  'pre_requisito'),
+    ('PIED', 'EDG',  'co_requisito'),
+    ('PSM',  'PDS',  'pre_requisito'),
+    ('SDG',  'PEN',  'pre_requisito'),
+    ('SLI',  'ASI',  'pre_requisito'),
+    ('TIC',  'SLI',  'pre_requisito')
+) AS v(disciplina, requisito, vinculo);
+
+-- Conferência: a coerência entre pre_requisito e as grades envolve três
+-- tabelas e não cabe em constraint. Se a carga violar alguma regra, o script
+-- para aqui em vez de seguir com dados incoerentes.
+--
+-- Como pre_requisito é do catálogo, a regra vale por currículo e só olha os
+-- pares em que disciplina e requisito estão na mesma grade:
+--   1. pre_requisito: o requisito vem em semestre anterior da grade;
+--   2. co_requisito: o requisito vem no mesmo semestre ou antes;
+--   3. toda linha vale em pelo menos uma grade (senão seria letra morta).
+
+DO $$
+DECLARE
+    violacoes integer;
+BEGIN
+    SELECT count(*) INTO violacoes
+    FROM pre_requisito p
+    JOIN curriculo_disciplina cd ON cd.id_disciplina = p.id_disciplina
+    JOIN curriculo_disciplina rq
+      ON rq.id_curriculo = cd.id_curriculo
+     AND rq.id_disciplina = p.id_disciplina_requisito
+    WHERE p.vinculo_pre_requisito = 'pre_requisito'
+      AND rq.periodo_curriculo_disciplina >= cd.periodo_curriculo_disciplina;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % pre_requisito(s) com requisito em semestre igual ou posterior', violacoes;
+    END IF;
+
+    SELECT count(*) INTO violacoes
+    FROM pre_requisito p
+    JOIN curriculo_disciplina cd ON cd.id_disciplina = p.id_disciplina
+    JOIN curriculo_disciplina rq
+      ON rq.id_curriculo = cd.id_curriculo
+     AND rq.id_disciplina = p.id_disciplina_requisito
+    WHERE p.vinculo_pre_requisito = 'co_requisito'
+      AND rq.periodo_curriculo_disciplina > cd.periodo_curriculo_disciplina;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % co_requisito(s) com requisito em semestre posterior', violacoes;
+    END IF;
+
+    SELECT count(*) INTO violacoes
+    FROM pre_requisito p
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM curriculo_disciplina cd
+        JOIN curriculo_disciplina rq ON rq.id_curriculo = cd.id_curriculo
+        WHERE cd.id_disciplina = p.id_disciplina
+          AND rq.id_disciplina = p.id_disciplina_requisito
+    );
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % pre_requisito(s) que não valem em nenhuma grade', violacoes;
+    END IF;
+END
+$$;
+
 COMMIT;

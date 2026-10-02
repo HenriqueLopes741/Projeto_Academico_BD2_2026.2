@@ -111,9 +111,9 @@ FROM (VALUES
     ('Campus Sul (Edson Machado)', 'JC1', 40, 'teorica'),
     ('Campus Sul (Edson Machado)', 'JC2', 40, 'teorica'),
     ('Campus Sul (Edson Machado)', 'JC3', 40, 'teorica'),
-    ('Campus Sul (Edson Machado)', 'KA1', 30, 'laboratorio'),
-    ('Campus Sul (Edson Machado)', 'KA2', 30, 'laboratorio'),
-    ('Campus Sul (Edson Machado)', 'KB1', 30, 'laboratorio'),
+    ('Campus Sul (Edson Machado)', 'KA1', 45, 'laboratorio'),
+    ('Campus Sul (Edson Machado)', 'KA2', 45, 'laboratorio'),
+    ('Campus Sul (Edson Machado)', 'KB1', 45, 'laboratorio'),
     ('Campus Sul (Edson Machado)', 'GA1', 150, 'auditorio'),
     -- Campus Ceilândia: bloco D (salas), bloco E (laboratórios), bloco F (auditório)
     ('Campus Ceilândia (Liliane Barbosa)', 'DA1', 45, 'teorica'),
@@ -124,9 +124,9 @@ FROM (VALUES
     ('Campus Ceilândia (Liliane Barbosa)', 'DB3', 50, 'teorica'),
     ('Campus Ceilândia (Liliane Barbosa)', 'DC1', 40, 'teorica'),
     ('Campus Ceilândia (Liliane Barbosa)', 'DC2', 40, 'teorica'),
-    ('Campus Ceilândia (Liliane Barbosa)', 'EA1', 30, 'laboratorio'),
-    ('Campus Ceilândia (Liliane Barbosa)', 'EA2', 30, 'laboratorio'),
-    ('Campus Ceilândia (Liliane Barbosa)', 'EB1', 30, 'laboratorio'),
+    ('Campus Ceilândia (Liliane Barbosa)', 'EA1', 45, 'laboratorio'),
+    ('Campus Ceilândia (Liliane Barbosa)', 'EA2', 45, 'laboratorio'),
+    ('Campus Ceilândia (Liliane Barbosa)', 'EB1', 45, 'laboratorio'),
     ('Campus Ceilândia (Liliane Barbosa)', 'FA1', 120, 'auditorio')
 ) AS v(campus, codigo, capacidade, tipo)
 JOIN campus c ON c.nome_campus = v.campus;
@@ -521,6 +521,168 @@ BEGIN
     );
     IF violacoes > 0 THEN
         RAISE EXCEPTION 'carga: % pre_requisito(s) que não valem em nenhuma grade', violacoes;
+    END IF;
+END
+$$;
+
+-- ============================================================
+-- TURMA
+-- ============================================================
+
+-- Uma turma é a oferta de uma disciplina num período letivo. Para cada um dos
+-- 4 semestres gera-se a oferta do módulo daquele semestre, para cada coorte:
+--
+--   semestre   módulo   (n = periodo_curriculo_disciplina)
+--   2025/1     1A       n = 1
+--   2025/2     1B       n = 2
+--   2026/1     2A       n = 3
+--   2026/2     2B       n = 4    <- semestre corrente
+--
+-- Coortes (um grupo de alunos que sobe junto, módulo a módulo):
+--   CCODM - Ciência da Computação, matutino  (Campus Sul)
+--   CCONM - Ciência da Computação, noturno   (Campus Sul)
+--   ECONM - Engenharia de Computação, noturno (Campus Ceilândia)
+-- O código segue o padrão do enunciado (CCODM2B, CCONM2B): curso + D(iurno) ou
+-- N(oturno) + M(ódulo) + módulo, e o sufixo identifica a disciplina, já que
+-- cada turma deste modelo é a oferta de uma disciplina só.
+-- Ex.: CCODM2B-BD2 = Banco de Dados II da turma CCODM2B em 2026/2.
+--
+-- Professor: rodízio determinístico pela disciplina, deslocado por coorte para
+-- uma mesma disciplina ter professores diferentes nas coortes (ver conferência).
+--
+-- vagas_turma:
+--   - semestres encerrados: 45;
+--   - 2026/2: 41 (coorte de 40 alunos + 1). Cada turma de 2026/2 tem
+--     exatamente 1 vaga livre, a "última vaga" que a frente de concorrência do
+--     Marco 2 disputa. COUNT(matricula) <= vagas_turma NÃO é constraint: é
+--     garantida por transação.
+
+INSERT INTO turma
+    (codigo_turma, id_disciplina, id_periodo_letivo, id_professor, turno_turma, vagas_turma)
+SELECT
+    format('%s%sM%s%s-%s',
+           co.curso, co.letra, (cd.n + 1) / 2, CASE cd.n % 2 WHEN 1 THEN 'A' ELSE 'B' END,
+           d.codigo_disciplina),
+    d.id_disciplina,
+    pl.id_periodo_letivo,
+    pr.id_professor,
+    co.turno::turno_t,
+    CASE WHEN pl.ano_periodo_letivo = 2026 AND pl.semestre_periodo_letivo = 2 THEN 41 ELSE 45 END
+FROM (VALUES
+    ('CCO', 'D', 'matutino', 0),
+    ('CCO', 'N', 'noturno',  4),
+    ('ECO', 'N', 'noturno',  6)
+) AS co(curso, letra, turno, deslocamento)
+JOIN curso c ON c.codigo_curso = co.curso
+JOIN curriculo k ON k.id_curso = c.id_curso
+JOIN (SELECT id_curriculo, id_disciplina,
+             periodo_curriculo_disciplina AS n
+        FROM curriculo_disciplina
+       WHERE periodo_curriculo_disciplina <= 4) cd ON cd.id_curriculo = k.id_curriculo
+JOIN disciplina d ON d.id_disciplina = cd.id_disciplina
+JOIN periodo_letivo pl
+  ON (pl.ano_periodo_letivo - 2025) * 2 + pl.semestre_periodo_letivo = cd.n
+JOIN (SELECT id_professor,
+             row_number() OVER (ORDER BY matricula_professor) - 1 AS rn
+        FROM professor) pr
+  ON pr.rn = (d.id_disciplina + co.deslocamento) % 12;
+
+-- ============================================================
+-- TURMA_HORARIO
+-- ============================================================
+
+-- Só as turmas de 2026/2 recebem horário. O EXCLUDE de turma_horario ignora o
+-- período letivo (só enxerga a própria linha): dar horário aos semestres
+-- antigos na mesma sala e faixa faria o banco rejeitar o reuso legítimo da
+-- sala entre semestres. Turma sem horário é válida no modelo.
+--
+-- Faixas (semiabertas [), aula que termina às 09:10 não conflita com a que
+-- começa às 09:10):
+--   matutino: 07:30-09:10 | 09:20-11:00 | 11:10-12:50, de segunda a sexta
+--             (15 faixas por semana)
+--   noturno:  19:00-20:40 | 20:50-22:30, de segunda a sexta, mais sábado de
+--             manhã 08:00-09:40 | 09:50-11:30 (12 faixas por semana)
+--
+-- Cada disciplina ocupa 2 faixas seguidas (60 h ~ 4 h/semana). A coorte tem 6
+-- disciplinas em 2026/2, então usa 12 faixas distintas e nunca tem duas
+-- aulas ao mesmo tempo.
+--
+-- Salas: cada coorte tem uma sala de aula fixa (sala comum do bloco) e usa o
+-- laboratório nas disciplinas com parte prática de 20 h ou mais. Os horários
+-- do matutino e do noturno não se cruzam, então a mesma sala serve aos dois
+-- turnos. O EXCLUDE (03) garante, de qualquer forma, que não haja conflito.
+
+INSERT INTO turma_horario
+    (id_turma, id_sala, dia_semana_turma_horario, faixa_turma_horario)
+SELECT
+    t.id_turma,
+    s.id_sala,
+    sl.dia,
+    timerange(sl.inicio, sl.fim, '[)')
+FROM (
+    -- ordem da disciplina dentro da coorte (0..5) define quais faixas ela usa
+    SELECT t.id_turma,
+           t.turno_turma,
+           left(t.codigo_turma, 3) AS curso,
+           d.ch_pratica_disciplina,
+           row_number() OVER (PARTITION BY split_part(t.codigo_turma, '-', 1)
+                              ORDER BY d.id_disciplina) - 1 AS j
+      FROM turma t
+      JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+      JOIN disciplina d ON d.id_disciplina = t.id_disciplina
+     WHERE pl.ano_periodo_letivo = 2026 AND pl.semestre_periodo_letivo = 2
+) t
+CROSS JOIN generate_series(0, 1) AS k(k)
+JOIN (
+    SELECT 'matutino'::turno_t AS turno, i AS idx, i / 3 + 1 AS dia,
+           (ARRAY['07:30','09:20','11:10'])[i % 3 + 1]::time AS inicio,
+           (ARRAY['09:10','11:00','12:50'])[i % 3 + 1]::time AS fim
+      FROM generate_series(0, 14) AS i
+    UNION ALL
+    SELECT 'noturno'::turno_t, i, i / 2 + 1,
+           (CASE WHEN i / 2 + 1 = 6 THEN (ARRAY['08:00','09:50'])[i % 2 + 1]
+                 ELSE (ARRAY['19:00','20:50'])[i % 2 + 1] END)::time,
+           (CASE WHEN i / 2 + 1 = 6 THEN (ARRAY['09:40','11:30'])[i % 2 + 1]
+                 ELSE (ARRAY['20:40','22:30'])[i % 2 + 1] END)::time
+      FROM generate_series(0, 11) AS i
+) sl ON sl.turno = t.turno_turma AND sl.idx = 2 * t.j + k.k
+JOIN curso c ON c.codigo_curso = t.curso
+JOIN sala s
+  ON s.id_campus = c.id_campus
+ AND s.codigo_sala = CASE
+         WHEN t.ch_pratica_disciplina >= 20
+             THEN CASE t.curso WHEN 'CCO' THEN 'KA1' ELSE 'EA1' END
+         ELSE CASE t.curso WHEN 'CCO' THEN 'JB3' ELSE 'DB3' END
+     END;
+
+-- Conferência: duas regras que o EXCLUDE não cobre (ele só olha a sala).
+--   1. nenhum professor em duas turmas ao mesmo tempo;
+--   2. a sala comporta as vagas da turma.
+
+DO $$
+DECLARE
+    violacoes integer;
+BEGIN
+    SELECT count(*) INTO violacoes
+    FROM turma_horario h1
+    JOIN turma t1 ON t1.id_turma = h1.id_turma
+    JOIN turma_horario h2
+      ON h2.id_turma_horario > h1.id_turma_horario
+     AND h2.dia_semana_turma_horario = h1.dia_semana_turma_horario
+     AND h2.faixa_turma_horario && h1.faixa_turma_horario
+    JOIN turma t2 ON t2.id_turma = h2.id_turma
+    WHERE t1.id_professor = t2.id_professor;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % choque(s) de horário de professor', violacoes;
+    END IF;
+
+    SELECT count(*) INTO violacoes
+    FROM turma_horario h
+    JOIN turma t ON t.id_turma = h.id_turma
+    JOIN sala s ON s.id_sala = h.id_sala
+    WHERE s.capacidade_sala < t.vagas_turma;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'carga: % horário(s) em sala menor que as vagas da turma', violacoes;
     END IF;
 END
 $$;

@@ -4,7 +4,10 @@ Banco de Dados II (CCO072) — Centro Universitário IESB — 2026/2 — Prof. R
 
 Autores: ver [AUTORES.md](AUTORES.md).
 
-## Modelo lógico
+## Antes do Código
+Após feedback do professor em 24 de agosto sobre a importância de seguir as etapas iniciais de desenvolvimento, a equipe priorizou a modelagem do banco de dados. Utilizando a ferramenta Draw.io, revisamos a estrutura e corrigimos erros presentes no modelo lógico inicial da disciplina. Os diagramas dos modelos conceitual e lógico resultantes estão disponíveis abaixo.
+
+### Modelo lógico
 
 Modelo lógico v2 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
 

@@ -17,8 +17,9 @@
 
 -- btree_gist ensina ao GiST os operadores de igualdade dos tipos escalares
 -- (smallint, integer). Sem ela o EXCLUDE de turma_horario não pode combinar
--- sala_id WITH = e faixa WITH && no mesmo índice: o range já tem suporte
--- GiST nativo, os escalares não.
+-- id_sala WITH =, dia_semana_turma_horario WITH = e faixa_turma_horario
+-- WITH && no mesmo índice: o range já tem suporte GiST nativo, os
+-- escalares não.
 --
 -- IF NOT EXISTS aqui não contradiz "scripts não idempotentes": é uma
 -- extensão compartilhada do cluster, não um tipo do esquema — recriá-la
@@ -35,8 +36,8 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 -- respeitada. Rótulos sem acento e em minúsculo: são case e accent
 -- sensitive, e qualquer divergência quebra a carga em 04_carga.sql.
 
--- sala.tipo — classifica o espaço físico. Não guarda capacidade nem
--- equipamento (isso é sala.capacidade); serve para casar disciplina
+-- sala.tipo_sala — classifica o espaço físico. Não guarda capacidade nem
+-- equipamento (isso é sala.capacidade_sala); serve para casar disciplina
 -- prática/teórica com o tipo de sala na alocação de turma_horario.
 
 CREATE TYPE tipo_sala_t AS ENUM (
@@ -45,7 +46,7 @@ CREATE TYPE tipo_sala_t AS ENUM (
     'auditorio'
 );
 
--- turma.turno — turno declarado da turma, não o horário exato. O horário
+-- turma.turno_turma — turno declarado da turma, não o horário exato. O horário
 -- de fato (dia da semana + faixa) mora em turma_horario; turno é a
 -- informação "de vitrine" usada em busca/filtro de oferta.
 
@@ -55,7 +56,7 @@ CREATE TYPE turno_t AS ENUM (
     'noturno'
 );
 
--- pre_requisito.vinculo — natureza da relação entre disciplina e
+-- pre_requisito.vinculo_pre_requisito — natureza da relação entre disciplina e
 -- requisito na tabela auto-relacionada. pre_requisito: precisa ter sido
 -- cursada/aprovada antes; co_requisito: pode ser cursada no mesmo
 -- período; equivalencia: uma dispensa a outra (ex.: disciplina
@@ -67,7 +68,7 @@ CREATE TYPE vinculo_t AS ENUM (
     'equivalencia'
 );
 
--- curriculo_disciplina.tipo — papel da disciplina dentro daquele
+-- curriculo_disciplina.tipo_curriculo_disciplina — papel da disciplina dentro daquele
 -- currículo específico. Fica na tabela de ligação, e não em disciplina,
 -- porque a mesma disciplina pode ser obrigatória num currículo e
 -- optativa em outro.
@@ -77,7 +78,7 @@ CREATE TYPE tipo_disc_t AS ENUM (
     'eletiva'
 );
 
--- matricula.status — ciclo de vida da matrícula. 'ativa' é o único
+-- matricula.status_matricula — ciclo de vida da matrícula. 'ativa' é o único
 -- estado inicial: matricula tem um único data_matricula, sem coluna para
 -- separar "solicitado" de "confirmado", então o INSERT já é o ato de
 -- matricular. 'trancada', 'cancelada' e 'concluida' são desfechos
@@ -90,7 +91,7 @@ CREATE TYPE status_mat_t AS ENUM (
     'concluida'
 );
 
--- historico.situacao — estado da matrícula ao longo do período, não só o
+-- historico.situacao_historico — estado da matrícula ao longo do período, não só o
 -- resultado terminal: a linha de historico nasce junto com a matrícula
 -- ('cursando', notas ainda nulas — ver nota_t) e é atualizada conforme o
 -- período avança. 'trancada' cobre quem abandona no meio do caminho, sem
@@ -112,8 +113,8 @@ CREATE TYPE situacao_t AS ENUM (
 -- 3. Domínios numéricos
 -- ---------------------------------------------------------------------
 
--- historico.nota_a1 / nota_a2 / nota_p3 — numeric(4,2) acompanha o tipo
--- de historico.media_final, definido no modelo: as três notas e a média
+-- historico.nota_a1_historico / nota_a2_historico / nota_p3_historico — numeric(4,2) acompanha o tipo
+-- de historico.media_final_historico, definido no modelo: as três notas e a média
 -- ficam no mesmo tipo base, sem coerção implícita na coluna gerada.
 -- numeric(4,2) por si só permitiria até 99,99; é o CHECK que restringe a
 -- faixa a 0-10, não a precisão numérica declarada no tipo.
@@ -123,7 +124,7 @@ CREATE TYPE situacao_t AS ENUM (
 CREATE DOMAIN nota_t AS numeric(4,2)
     CONSTRAINT ck_nota_t_faixa CHECK (VALUE >= 0 AND VALUE <= 10);
 
--- historico.frequencia — percentual de presença, faixa 0-100. 5 dígitos
+-- historico.frequencia_historico — percentual de presença, faixa 0-100. 5 dígitos
 -- totais (numeric(5,2)) para caber 100,00 sem estourar a precisão; com
 -- numeric(4,2) o valor máximo representável seria 99,99.
 
@@ -134,7 +135,7 @@ CREATE DOMAIN pct_t AS numeric(5,2)
 -- 4. Tipo range de horário
 -- ---------------------------------------------------------------------
 
--- turma_horario.faixa — timerange não é nativo do PG 17, por isso o
+-- turma_horario.faixa_turma_horario — timerange não é nativo do PG 17, por isso o
 -- range e a função de distância abaixo precisam existir antes da coluna
 -- que os usa (02_tabelas.sql).
 --

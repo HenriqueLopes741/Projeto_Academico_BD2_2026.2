@@ -7,6 +7,19 @@ Autores: ver [AUTORES.md](AUTORES.md).
 ## Antes do Código
 Após feedback do professor em 24 de agosto sobre a importância de seguir as etapas iniciais de desenvolvimento, a equipe priorizou a modelagem do banco de dados. Utilizando a ferramenta Draw.io, revisamos a estrutura e corrigimos erros presentes no modelo lógico inicial da disciplina. Os diagramas dos modelos conceitual e lógico resultantes estão disponíveis abaixo.
 
+### Modelo lógico
+
+Modelo lógico v2 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
+
+[![Modelo lógico v2](docs/modelo_logico_diagrama.png)](modelo_logico.pdf)
+
+Convenção de nomes: atributo = `<atributo>_<tabela>` (ex.: `nome_campus`), PK = `id_<tabela>`, FK = mesmo nome da PK que referencia. Quando há duas FK para a mesma tabela, a segunda leva o papel no nome (`id_disciplina_requisito`).
+
+Tipos enumerados, domínios, `timerange` e colunas geradas (página 2 do PDF):
+
+![Tipos, domínios e colunas geradas](docs/modelo_logico_tipos.png)
+
+PDF completo: [modelo_logico.pdf](modelo_logico.pdf)
 
 ## Pré-requisito
 
@@ -53,6 +66,8 @@ docker compose up -d     # sobe limpo de novo
 docker-compose.yml        # ambiente Docker (PostgreSQL 17 + pgAdmin)
 sql/                       # scripts SQL numerados na ordem de execução
 scripts/                   # ferramental de teste, verificação e automação
+docs/                      # imagens do modelo lógico usadas no README
+modelo_logico.pdf          # modelo lógico v2 (diagrama + tipos/domínios)
 evidencias/explain.md      # EXPLAIN (ANALYZE, BUFFERS) antes/depois dos índices
 AUTORES.md                 # integrantes e frente de cada um
 ```

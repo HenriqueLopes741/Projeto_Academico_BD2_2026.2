@@ -5,13 +5,17 @@
 -- Banco de Dados II (CCO072) — IESB 2026/2
 -- =====================================================================
 --
--- TODO — obrigatórias pelo enunciado (Seção 4.1):
---   - 1 junção externa com agregação
---   - 1 consulta recursiva: árvore de pré-requisitos
---   - 1 consulta recursiva: disciplinas que um aluno já pode cursar
---   - 1 função de janela com ranking e percentil
---   - 1 função de janela com LAG para evolução do rendimento
---   - + 5 consultas adicionais de complexidade crescente
+-- Índice (as obrigatórias da Seção 4.1 estão marcadas com *):
+--   Q1   JOIN em cadeia                 oferta de 2026/2
+--   Q2   GROUP BY + HAVING              turmas na última vaga
+--   Q3 * LEFT JOIN + agregação          catálogo x oferta de 2026/2
+--   Q4   EXISTS / NOT EXISTS            alunos que nunca reprovaram
+--   Q5   CTE + CASE                     taxa de aprovação x média geral
+--   Q6 * WITH RECURSIVE                 árvore de pré-requisitos de CMP
+--   Q7 * WITH RECURSIVE + NOT EXISTS    disciplinas que a aluna pode cursar
+--   Q8   janela de agregação            aluno x média da turma
+--   Q9 * RANK / PERCENT_RANK / NTILE    ranking e percentil por curso
+--   Q10* LAG / FIRST_VALUE              evolução do rendimento por semestre
 
 
 -- ---------------------------------------------------------------------
@@ -506,3 +510,71 @@ FROM ranking r
 JOIN curso c ON c.id_curso = r.id_curso
 WHERE r.posicao <= 10
 ORDER BY c.codigo_curso, r.posicao, r.nome_aluno;
+
+
+-- ---------------------------------------------------------------------
+-- Q10 — Evolução do rendimento semestre a semestre (janela com LAG)
+-- ---------------------------------------------------------------------
+-- Objetivo: para cada aluno, a média do semestre comparada com a média
+-- do semestre anterior: quanto subiu ou caiu e a tendência. Exibe duas
+-- trajetórias opostas: a 1ª colocada de CCO na Q9 (202510003) e a aluna
+-- com mais reprovações, usada na Q7 (202510007).
+--
+-- Técnica: LAG() OVER (PARTITION BY aluno ORDER BY ano, semestre).
+--   LAG(x) devolve o valor de x na linha ANTERIOR da janela, sem
+--   self-join. PARTITION BY id_aluno faz cada aluno ter sua própria
+--   sequência; ORDER BY ano, semestre define o que é "anterior".
+--   Sem o ORDER BY, "anterior" não teria significado.
+--   FIRST_VALUE() pega o primeiro semestre da mesma janela, para medir
+--   a evolução acumulada desde o ingresso.
+--
+-- O primeiro semestre de cada aluno não tem anterior: LAG devolve NULL
+-- e a variação fica NULL. É o esperado, não um erro; o CASE trata como
+-- 'início'.
+--
+-- A CTE agrega primeiro (uma linha por aluno e semestre) e só depois a
+-- janela compara as linhas. 2026/2 fica de fora: ainda está em curso e
+-- não tem média final.
+WITH media_semestre AS (
+    SELECT
+        a.id_aluno,
+        a.matricula_aluno,
+        a.nome_aluno,
+        pl.ano_periodo_letivo                  AS ano,
+        pl.semestre_periodo_letivo             AS semestre,
+        ROUND(AVG(h.media_final_historico), 2) AS media
+    FROM aluno a
+    JOIN matricula      m  ON m.id_aluno           = a.id_aluno
+    JOIN historico      h  ON h.id_matricula       = m.id_matricula
+    JOIN turma          t  ON t.id_turma           = m.id_turma
+    JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+    WHERE h.media_final_historico IS NOT NULL
+      AND h.situacao_historico NOT IN ('cursando', 'trancada')
+    GROUP BY a.id_aluno, pl.ano_periodo_letivo, pl.semestre_periodo_letivo
+),
+evolucao AS (
+    SELECT
+        ms.*,
+        LAG(ms.media)         OVER aluno_w AS media_anterior,
+        ms.media - LAG(ms.media) OVER aluno_w AS variacao,
+        ms.media - FIRST_VALUE(ms.media) OVER aluno_w AS desde_ingresso
+    FROM media_semestre ms
+    WINDOW aluno_w AS (PARTITION BY ms.id_aluno ORDER BY ms.ano, ms.semestre)
+)
+SELECT
+    e.matricula_aluno,
+    e.nome_aluno,
+    e.ano || '/' || e.semestre AS periodo,
+    e.media,
+    e.media_anterior,
+    e.variacao,
+    e.desde_ingresso,
+    CASE
+        WHEN e.variacao IS NULL THEN 'início'
+        WHEN e.variacao > 0     THEN 'subiu'
+        WHEN e.variacao < 0     THEN 'caiu'
+        ELSE 'estável'
+    END AS tendencia
+FROM evolucao e
+WHERE e.matricula_aluno IN ('202510003', '202510007')
+ORDER BY e.matricula_aluno, e.ano, e.semestre;

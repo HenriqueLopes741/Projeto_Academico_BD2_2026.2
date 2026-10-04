@@ -54,3 +54,42 @@ JOIN sala           s  ON s.id_sala            = th.id_sala
 WHERE pl.ano_periodo_letivo      = 2026
   AND pl.semestre_periodo_letivo = 2
 ORDER BY th.dia_semana_turma_horario, inicio, t.codigo_turma;
+
+
+-- ---------------------------------------------------------------------
+-- Q2 — Turmas de 2026/2 na última vaga (ou já lotadas)
+-- ---------------------------------------------------------------------
+-- Objetivo: achar as turmas onde resta no máximo 1 vaga. São elas que
+-- o Marco 2 usa para reproduzir a disputa pela última vaga.
+--
+-- Técnica: GROUP BY + COUNT + HAVING.
+--   GROUP BY junta as matrículas de cada turma numa linha só;
+--   COUNT(*) conta quantas matrículas caíram em cada grupo;
+--   HAVING filtra DEPOIS de agrupar, olhando o resultado do COUNT.
+--
+-- Por que HAVING e não WHERE: o WHERE roda linha a linha, antes do
+-- agrupamento, e ainda não existe COUNT nesse momento. Por isso o
+-- filtro de status ('ativa') fica no WHERE e o filtro de vagas
+-- restantes fica no HAVING.
+--
+-- Só matrícula 'ativa' ocupa vaga: trancada, cancelada e concluída
+-- não contam.
+--
+-- Limitação proposital: com JOIN interno, turma sem nenhuma matrícula
+-- some do resultado. A Q3 resolve isso com LEFT JOIN.
+SELECT
+    t.codigo_turma,
+    d.nome_disciplina,
+    t.vagas_turma,
+    COUNT(*)                 AS matriculados,
+    t.vagas_turma - COUNT(*) AS vagas_restantes
+FROM turma t
+JOIN disciplina     d  ON d.id_disciplina      = t.id_disciplina
+JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+JOIN matricula      m  ON m.id_turma           = t.id_turma
+WHERE pl.ano_periodo_letivo      = 2026
+  AND pl.semestre_periodo_letivo = 2
+  AND m.status_matricula         = 'ativa'
+GROUP BY t.id_turma, t.codigo_turma, d.nome_disciplina, t.vagas_turma
+HAVING t.vagas_turma - COUNT(*) <= 1
+ORDER BY vagas_restantes, t.codigo_turma;

@@ -11,15 +11,9 @@ Após feedback do professor em 24 de agosto sobre a importância de seguir as et
 
 Modelo lógico v2 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
 
-[![Modelo lógico v2](docs/modelo_logico_diagrama.png)](modelo_logico.pdf)
+Diagrama completo, com tipos enumerados, domínios, `timerange` e colunas geradas: [modelo_logico_v2.drawio.pdf](modelo_logico_v2.drawio.pdf).
 
 Convenção de nomes: atributo = `<atributo>_<tabela>` (ex.: `nome_campus`), PK = `id_<tabela>`, FK = mesmo nome da PK que referencia. Quando há duas FK para a mesma tabela, a segunda leva o papel no nome (`id_disciplina_requisito`).
-
-Tipos enumerados, domínios, `timerange` e colunas geradas (página 2 do PDF):
-
-![Tipos, domínios e colunas geradas](docs/modelo_logico_tipos.png)
-
-PDF completo: [modelo_logico.pdf](modelo_logico.pdf)
 
 ## Pré-requisito
 
@@ -42,15 +36,50 @@ A base `matricula` sobe **vazia**. O esquema é criado pelos scripts em `sql/`.
 
 ## Rodando os scripts SQL
 
-Os arquivos em `sql/` são numerados na ordem real de execução. Rodar `01` → `07` num banco vazio precisa levantar o esquema funcionando (Marco 1):
+Os arquivos em `sql/` são numerados na ordem real de execução. Rodar `01` → `05` num banco vazio levanta o Marco 1 completo (tipos, tabelas, constraints, carga e consultas):
 
 ```bash
-for f in sql/0{1,2,3,4,5,7}_*.sql; do
+for f in sql/0{1,2,3,4,5}_*.sql; do
   docker compose exec -T postgres psql -U bd2 -d matricula -v ON_ERROR_STOP=1 -f - < "$f"
 done
 ```
 
-`06`, `08`, `09`, `10` compõem o Marco 2 e são rodados depois, na mesma ordem numérica.
+Deu certo se aparecer `NOTICE: carga ok: 120 alunos, 83 turmas, 3320 matrículas`, seguido do resultado das 10 consultas. Para conferir as tabelas pelo terminal:
+
+```bash
+docker compose exec postgres psql -U bd2 -d matricula -c '\dt'
+```
+
+`06` a `10` compõem o Marco 2 e são rodados depois, na mesma ordem numérica.
+
+## Conectando no pgAdmin
+
+1. Abra http://localhost:8080 e entre com `admin@iesb.br` / `admin`.
+2. Na árvore à esquerda, clique com o botão direito em **Servers → Register → Server…**
+3. Aba **General**: em **Name**, dê um nome qualquer (ex.: `matricula (bd2)`).
+4. Aba **Connection**:
+
+   | Campo | Valor |
+   |---|---|
+   | Host name/address | `postgres` |
+   | Port | `5432` |
+   | Maintenance database | `matricula` |
+   | Username | `bd2` |
+   | Password | `bd2` (marque **Save password**) |
+
+5. Clique em **Save**. As tabelas ficam em:
+
+   ```
+   Servers → matricula (bd2) → Databases → matricula → Schemas → public → Tables
+   ```
+
+**Host é `postgres`, não `localhost`.** O pgAdmin roda dentro do próprio contêiner, e para ele `localhost` é o contêiner do pgAdmin. Os contêineres se enxergam pelo nome do serviço no `docker-compose.yml`, que é `postgres`. Para conectar de fora do Docker (DBeaver, VS Code, `psql` local), aí sim use `localhost:5432`.
+
+**Não aparece nenhuma tabela?**
+
+- O banco sobe vazio: rode os scripts da seção anterior.
+- O pgAdmin não recarrega sozinho: botão direito em **Tables → Refresh**.
+- Confira se abriu o banco `matricula`, e não o `postgres`.
 
 ## Recomeçando do zero
 
@@ -66,8 +95,7 @@ docker compose up -d     # sobe limpo de novo
 docker-compose.yml        # ambiente Docker (PostgreSQL 17 + pgAdmin)
 sql/                       # scripts SQL numerados na ordem de execução
 scripts/                   # ferramental de teste, verificação e automação
-docs/                      # imagens do modelo lógico usadas no README
-modelo_logico.pdf          # modelo lógico v2 (diagrama + tipos/domínios)
+modelo_logico_v2.drawio.pdf # modelo lógico v2 (diagrama + tipos/domínios)
 evidencias/explain.md      # EXPLAIN (ANALYZE, BUFFERS) antes/depois dos índices
 AUTORES.md                 # integrantes e frente de cada um
 ```

@@ -243,3 +243,162 @@ FROM resultado r
 JOIN disciplina d ON d.id_disciplina = r.id_disciplina
 CROSS JOIN geral g
 ORDER BY taxa_aprovacao, d.codigo_disciplina;
+
+
+-- ---------------------------------------------------------------------
+-- Q6 — Árvore de pré-requisitos de Compiladores (consulta recursiva)
+-- ---------------------------------------------------------------------
+-- Objetivo: listar tudo o que precisa ser cursado antes de CMP
+-- (Compiladores), direta ou indiretamente, com o nível de cada requisito.
+-- CMP é a disciplina com a cadeia mais profunda do catálogo (4 níveis).
+--
+-- Técnica: WITH RECURSIVE. Tem duas partes ligadas por UNION ALL:
+--   âncora    -> roda uma vez: os requisitos diretos de CMP (nível 1);
+--   recursiva -> roda de novo sobre as linhas que acabaram de entrar,
+--                buscando os requisitos de cada requisito (nível + 1).
+--   Para quando uma rodada não acha nenhuma linha nova.
+--
+-- caminho guarda os ids já visitados no ramo. A condição
+-- NOT (... = ANY(caminho)) impede laço infinito se um dia alguém
+-- cadastrar um ciclo (A exige B, B exige A). O CHECK do banco só
+-- barra o ciclo direto A -> A, não ciclos maiores.
+--
+-- Só segue vínculo 'pre_requisito'. 'co_requisito' pode ser cursado no
+-- mesmo semestre, então não é algo que precisa vir ANTES.
+--
+-- Uma disciplina pode aparecer mais de uma vez se for exigida por dois
+-- ramos diferentes: é uma árvore, não uma lista de únicos.
+--
+-- A árvore é a do catálogo, que vale para CCO e ECO juntos. Em LFA isso
+-- aparece: CCO exige TCP e ECO exige ED, e os dois ramos são listados.
+-- O recorte por curso é feito na Q7, que olha a grade do aluno.
+WITH RECURSIVE arvore AS (
+    -- âncora: requisitos diretos de CMP
+    SELECT
+        pr.id_disciplina_requisito                     AS id_requisito,
+        1                                              AS nivel,
+        ARRAY[pr.id_disciplina, pr.id_disciplina_requisito] AS caminho
+    FROM pre_requisito pr
+    JOIN disciplina d ON d.id_disciplina = pr.id_disciplina
+    WHERE d.codigo_disciplina        = 'CMP'
+      AND pr.vinculo_pre_requisito   = 'pre_requisito'
+
+    UNION ALL
+
+    -- recursiva: requisitos dos requisitos já encontrados
+    SELECT
+        pr.id_disciplina_requisito,
+        a.nivel + 1,
+        a.caminho || pr.id_disciplina_requisito
+    FROM arvore a
+    JOIN pre_requisito pr ON pr.id_disciplina = a.id_requisito
+    WHERE pr.vinculo_pre_requisito = 'pre_requisito'
+      AND NOT (pr.id_disciplina_requisito = ANY (a.caminho))
+)
+SELECT
+    a.nivel,
+    repeat('    ', a.nivel - 1) || d.codigo_disciplina AS requisito,
+    d.nome_disciplina,
+    (SELECT string_agg(dc.codigo_disciplina, ' <- ' ORDER BY c.ord)
+       FROM unnest(a.caminho) WITH ORDINALITY AS c(id, ord)
+       JOIN disciplina dc ON dc.id_disciplina = c.id) AS caminho
+FROM arvore a
+JOIN disciplina d ON d.id_disciplina = a.id_requisito
+ORDER BY a.caminho;
+
+
+-- ---------------------------------------------------------------------
+-- Q7 — Disciplinas que um aluno já pode cursar (consulta recursiva)
+-- ---------------------------------------------------------------------
+-- Objetivo: para a aluna 202510007, listar as disciplinas do currículo
+-- dela que ainda não foram aprovadas, não estão em curso e cujos
+-- pré-requisitos já foram TODOS cumpridos.
+--
+-- Técnica: WITH RECURSIVE para o fecho transitivo + NOT EXISTS.
+--   requisitos -> para cada disciplina, TODOS os requisitos, diretos e
+--                 indiretos (se C exige B e B exige A, C exige A também);
+--   cumpridas  -> disciplinas em que a aluna tem 'aprovado';
+--   resultado  -> disciplina do currículo para a qual NÃO EXISTE
+--                 requisito fora de "cumpridas". Disciplina sem nenhum
+--                 requisito passa direto (NOT EXISTS de nada é verdade).
+--
+-- Por que recursivo e não só o requisito direto: olhar um nível só
+-- confia que quem tem B aprovada também tem A. Isso vale num histórico
+-- consistente, mas quebra com aproveitamento de estudos ou carga manual.
+-- O fecho garante a regra inteira, independente de como o histórico
+-- foi preenchido.
+--
+-- pre_requisito é do catálogo, não do curso: a mesma disciplina pode ter
+-- exigência diferente em CCO e em ECO (ver 04_carga.sql). Por isso a
+-- recursão só caminha por requisitos que existem na grade da aluna
+-- (JOIN com grade nas duas partes do WITH RECURSIVE).
+--
+-- Fica de fora o que está 'cursando': a aluna já está matriculada.
+-- Co-requisito não bloqueia (pode cursar junto), por isso não entra.
+-- NOT IN em "cumpridas" é seguro aqui: id_disciplina nunca é NULL.
+WITH RECURSIVE
+aluna AS (
+    SELECT id_aluno, id_curriculo
+    FROM aluno
+    WHERE matricula_aluno = '202510007'
+),
+grade AS (
+    SELECT cd.id_disciplina
+    FROM aluna al
+    JOIN curriculo_disciplina cd ON cd.id_curriculo = al.id_curriculo
+),
+requisitos AS (
+    -- âncora: requisito direto de cada disciplina
+    SELECT
+        pr.id_disciplina,
+        pr.id_disciplina_requisito AS id_requisito,
+        ARRAY[pr.id_disciplina, pr.id_disciplina_requisito] AS caminho
+    FROM pre_requisito pr
+    JOIN grade g ON g.id_disciplina = pr.id_disciplina_requisito
+    WHERE pr.vinculo_pre_requisito = 'pre_requisito'
+
+    UNION ALL
+
+    -- recursiva: o requisito do requisito também é requisito
+    SELECT
+        r.id_disciplina,
+        pr.id_disciplina_requisito,
+        r.caminho || pr.id_disciplina_requisito
+    FROM requisitos r
+    JOIN pre_requisito pr ON pr.id_disciplina = r.id_requisito
+    JOIN grade g          ON g.id_disciplina  = pr.id_disciplina_requisito
+    WHERE pr.vinculo_pre_requisito = 'pre_requisito'
+      AND NOT (pr.id_disciplina_requisito = ANY (r.caminho))
+),
+historico_aluna AS (
+    SELECT t.id_disciplina, h.situacao_historico
+    FROM aluna al
+    JOIN matricula m ON m.id_aluno     = al.id_aluno
+    JOIN historico h ON h.id_matricula = m.id_matricula
+    JOIN turma     t ON t.id_turma     = m.id_turma
+),
+cumpridas AS (
+    SELECT DISTINCT id_disciplina
+    FROM historico_aluna
+    WHERE situacao_historico = 'aprovado'
+)
+SELECT
+    cd.periodo_curriculo_disciplina AS periodo,
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    cd.tipo_curriculo_disciplina    AS tipo
+FROM aluna al
+JOIN curriculo_disciplina cd ON cd.id_curriculo = al.id_curriculo
+JOIN disciplina d            ON d.id_disciplina = cd.id_disciplina
+WHERE NOT EXISTS (                       -- ainda não aprovada
+        SELECT 1 FROM cumpridas c
+         WHERE c.id_disciplina = cd.id_disciplina)
+  AND NOT EXISTS (                       -- não está cursando agora
+        SELECT 1 FROM historico_aluna ha
+         WHERE ha.id_disciplina = cd.id_disciplina
+           AND ha.situacao_historico = 'cursando')
+  AND NOT EXISTS (                       -- nenhum requisito pendente
+        SELECT 1 FROM requisitos r
+         WHERE r.id_disciplina = cd.id_disciplina
+           AND r.id_requisito NOT IN (SELECT id_disciplina FROM cumpridas))
+ORDER BY cd.periodo_curriculo_disciplina, d.codigo_disciplina;

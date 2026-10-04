@@ -9,9 +9,11 @@ Após feedback do professor em 24 de agosto sobre a importância de seguir as et
 
 ### Modelo lógico
 
-Modelo lógico v2 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
+Modelo lógico v3 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
 
-Diagrama completo, com tipos enumerados, domínios, `timerange` e colunas geradas: [modelo_logico_v2.drawio.pdf](modelo_logico_v2.drawio.pdf).
+Diagrama: [modelo_logico_v3.drawio.pdf](modelo_logico_v3.drawio.pdf). A página 2 traz os tipos enumerados, domínios, `timerange`, colunas geradas e as decisões deliberadas; as definições estão em [sql/01_tipos_dominios.sql](sql/01_tipos_dominios.sql).
+
+A v3 corrige dois pontos da v2: `pre_requisito` passou a ser por currículo (`id_curriculo`), porque a mesma disciplina tem exigências diferentes em CCO e ECO, e `turma_horario` passou a guardar `id_periodo_letivo`, para o EXCLUDE de sala ocupada separar semestres.
 
 Convenção de nomes: atributo = `<atributo>_<tabela>` (ex.: `nome_campus`), PK = `id_<tabela>`, FK = mesmo nome da PK que referencia. Quando há duas FK para a mesma tabela, a segunda leva o papel no nome (`id_disciplina_requisito`).
 
@@ -95,7 +97,7 @@ docker compose up -d     # sobe limpo de novo
 docker-compose.yml        # ambiente Docker (PostgreSQL 17 + pgAdmin)
 sql/                       # scripts SQL numerados na ordem de execução
 scripts/                   # ferramental de teste, verificação e automação
-modelo_logico_v2.drawio.pdf # modelo lógico v2 (diagrama + tipos/domínios)
+modelo_logico_v3.drawio.pdf # diagrama do modelo lógico v3 (2 páginas)
 evidencias/explain.md      # EXPLAIN (ANALYZE, BUFFERS) antes/depois dos índices
 AUTORES.md                 # integrantes e frente de cada um
 ```

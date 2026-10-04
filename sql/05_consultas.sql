@@ -11,7 +11,7 @@
 --   Q3 * LEFT JOIN + agregação          catálogo x oferta de 2026/2
 --   Q4   EXISTS / NOT EXISTS            alunos que nunca reprovaram
 --   Q5   CTE + CASE                     taxa de aprovação x média geral
---   Q6 * WITH RECURSIVE                 árvore de pré-requisitos de CMP
+--   Q6 * WITH RECURSIVE                 árvore de CMP em CCO e em ECO
 --   Q7 * WITH RECURSIVE + NOT EXISTS    disciplinas que a aluna pode cursar
 --   Q8   janela de agregação            aluno x média da turma
 --   Q9 * RANK / PERCENT_RANK / NTILE    ranking e percentil por curso
@@ -250,17 +250,24 @@ ORDER BY taxa_aprovacao, d.codigo_disciplina;
 
 
 -- ---------------------------------------------------------------------
--- Q6 — Árvore de pré-requisitos de Compiladores (consulta recursiva)
+-- Q6 — Árvore de pré-requisitos de Compiladores em CCO e ECO (recursiva)
 -- ---------------------------------------------------------------------
 -- Objetivo: listar tudo o que precisa ser cursado antes de CMP
--- (Compiladores), direta ou indiretamente, com o nível de cada requisito.
--- CMP é a disciplina com a cadeia mais profunda do catálogo (4 níveis).
+-- (Compiladores), direta ou indiretamente, com o nível de cada requisito,
+-- em cada um dos dois currículos. A mesma disciplina tem árvores
+-- diferentes: em CCO, Linguagens Formais exige Teoria da Computação; em
+-- ECO, exige Estrutura de Dados. Em ECO a cadeia tem 4 níveis, a mais
+-- profunda do banco.
 --
 -- Técnica: WITH RECURSIVE. Tem duas partes ligadas por UNION ALL:
 --   âncora    -> roda uma vez: os requisitos diretos de CMP (nível 1);
 --   recursiva -> roda de novo sobre as linhas que acabaram de entrar,
 --                buscando os requisitos de cada requisito (nível + 1).
 --   Para quando uma rodada não acha nenhuma linha nova.
+--
+-- id_curriculo é carregado de uma rodada para a outra e entra no JOIN da
+-- parte recursiva: a árvore de CCO só desce por exigências de CCO. Sem
+-- isso, os dois currículos se misturariam a partir do 2º nível.
 --
 -- caminho guarda os ids já visitados no ramo. A condição
 -- NOT (... = ANY(caminho)) impede laço infinito se um dia alguém
@@ -272,43 +279,46 @@ ORDER BY taxa_aprovacao, d.codigo_disciplina;
 --
 -- Uma disciplina pode aparecer mais de uma vez se for exigida por dois
 -- ramos diferentes: é uma árvore, não uma lista de únicos.
---
--- A árvore é a do catálogo, que vale para CCO e ECO juntos. Em LFA isso
--- aparece: CCO exige TCP e ECO exige ED, e os dois ramos são listados.
--- O recorte por curso é feito na Q7, que olha a grade do aluno.
 WITH RECURSIVE arvore AS (
-    -- âncora: requisitos diretos de CMP
+    -- âncora: requisitos diretos de CMP, em cada currículo
     SELECT
-        pr.id_disciplina_requisito                     AS id_requisito,
-        1                                              AS nivel,
+        pr.id_curriculo,
+        pr.id_disciplina_requisito                          AS id_requisito,
+        1                                                   AS nivel,
         ARRAY[pr.id_disciplina, pr.id_disciplina_requisito] AS caminho
     FROM pre_requisito pr
     JOIN disciplina d ON d.id_disciplina = pr.id_disciplina
-    WHERE d.codigo_disciplina        = 'CMP'
-      AND pr.vinculo_pre_requisito   = 'pre_requisito'
+    WHERE d.codigo_disciplina      = 'CMP'
+      AND pr.vinculo_pre_requisito = 'pre_requisito'
 
     UNION ALL
 
-    -- recursiva: requisitos dos requisitos já encontrados
+    -- recursiva: requisitos dos requisitos, no mesmo currículo
     SELECT
+        a.id_curriculo,
         pr.id_disciplina_requisito,
         a.nivel + 1,
         a.caminho || pr.id_disciplina_requisito
     FROM arvore a
-    JOIN pre_requisito pr ON pr.id_disciplina = a.id_requisito
+    JOIN pre_requisito pr
+      ON pr.id_curriculo  = a.id_curriculo
+     AND pr.id_disciplina = a.id_requisito
     WHERE pr.vinculo_pre_requisito = 'pre_requisito'
       AND NOT (pr.id_disciplina_requisito = ANY (a.caminho))
 )
 SELECT
+    c.codigo_curso,
     a.nivel,
     repeat('    ', a.nivel - 1) || d.codigo_disciplina AS requisito,
     d.nome_disciplina,
-    (SELECT string_agg(dc.codigo_disciplina, ' <- ' ORDER BY c.ord)
-       FROM unnest(a.caminho) WITH ORDINALITY AS c(id, ord)
-       JOIN disciplina dc ON dc.id_disciplina = c.id) AS caminho
+    (SELECT string_agg(dc.codigo_disciplina, ' <- ' ORDER BY x.ord)
+       FROM unnest(a.caminho) WITH ORDINALITY AS x(id, ord)
+       JOIN disciplina dc ON dc.id_disciplina = x.id) AS caminho
 FROM arvore a
-JOIN disciplina d ON d.id_disciplina = a.id_requisito
-ORDER BY a.caminho;
+JOIN disciplina d  ON d.id_disciplina = a.id_requisito
+JOIN curriculo cu  ON cu.id_curriculo = a.id_curriculo
+JOIN curso c       ON c.id_curso      = cu.id_curso
+ORDER BY c.codigo_curso, a.caminho;
 
 
 -- ---------------------------------------------------------------------
@@ -332,10 +342,9 @@ ORDER BY a.caminho;
 -- O fecho garante a regra inteira, independente de como o histórico
 -- foi preenchido.
 --
--- pre_requisito é do catálogo, não do curso: a mesma disciplina pode ter
--- exigência diferente em CCO e em ECO (ver 04_carga.sql). Por isso a
--- recursão só caminha por requisitos que existem na grade da aluna
--- (JOIN com grade nas duas partes do WITH RECURSIVE).
+-- pre_requisito é por currículo: a mesma disciplina pode ter exigência
+-- diferente em CCO e em ECO. Por isso a âncora só pega exigências do
+-- currículo da aluna, e a parte recursiva continua nesse mesmo currículo.
 --
 -- Fica de fora o que está 'cursando': a aluna já está matriculada.
 -- Co-requisito não bloqueia (pode cursar junto), por isso não entra.
@@ -346,31 +355,29 @@ aluna AS (
     FROM aluno
     WHERE matricula_aluno = '202510007'
 ),
-grade AS (
-    SELECT cd.id_disciplina
-    FROM aluna al
-    JOIN curriculo_disciplina cd ON cd.id_curriculo = al.id_curriculo
-),
 requisitos AS (
-    -- âncora: requisito direto de cada disciplina
+    -- âncora: requisito direto de cada disciplina do currículo da aluna
     SELECT
+        pr.id_curriculo,
         pr.id_disciplina,
         pr.id_disciplina_requisito AS id_requisito,
         ARRAY[pr.id_disciplina, pr.id_disciplina_requisito] AS caminho
     FROM pre_requisito pr
-    JOIN grade g ON g.id_disciplina = pr.id_disciplina_requisito
+    JOIN aluna al ON al.id_curriculo = pr.id_curriculo
     WHERE pr.vinculo_pre_requisito = 'pre_requisito'
 
     UNION ALL
 
     -- recursiva: o requisito do requisito também é requisito
     SELECT
+        r.id_curriculo,
         r.id_disciplina,
         pr.id_disciplina_requisito,
         r.caminho || pr.id_disciplina_requisito
     FROM requisitos r
-    JOIN pre_requisito pr ON pr.id_disciplina = r.id_requisito
-    JOIN grade g          ON g.id_disciplina  = pr.id_disciplina_requisito
+    JOIN pre_requisito pr
+      ON pr.id_curriculo  = r.id_curriculo
+     AND pr.id_disciplina = r.id_requisito
     WHERE pr.vinculo_pre_requisito = 'pre_requisito'
       AND NOT (pr.id_disciplina_requisito = ANY (r.caminho))
 ),

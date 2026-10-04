@@ -215,37 +215,6 @@ ALTER TABLE feriado
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================
--- PRE_REQUISITO
--- ============================================================
-
-ALTER TABLE pre_requisito
-    -- Chave primária composta pelo par de disciplinas.
-    -- Impede que o mesmo relacionamento seja cadastrado duas vezes.
-    -- Não é necessário criar um id separado.
-    ADD CONSTRAINT pk_pre_requisito
-        PRIMARY KEY (id_disciplina, id_disciplina_requisito),
-
-    -- Impede que uma disciplina seja requisito dela mesma.
-    -- Ex.: Algoritmos I não pode exigir Algoritmos I.
-    -- Não impede ciclos maiores, como A → B → A.
-    ADD CONSTRAINT ck_pre_requisito_sem_autorreferencia
-        CHECK (id_disciplina <> id_disciplina_requisito),
-
-    -- Garante que a disciplina que possui o requisito exista.
-    -- CASCADE: ao apagar essa disciplina, seus vínculos de
-    -- pré-requisito também são removidos.
-    ADD CONSTRAINT fk_pre_requisito_disciplina
-        FOREIGN KEY (id_disciplina) REFERENCES disciplina (id_disciplina)
-        ON DELETE CASCADE ON UPDATE CASCADE,
-
-    -- Garante que a disciplina exigida exista.
-    -- RESTRICT: impede apagar uma disciplina que ainda é
-    -- utilizada como requisito por outra.
-    ADD CONSTRAINT fk_pre_requisito_requisito
-        FOREIGN KEY (id_disciplina_requisito) REFERENCES disciplina (id_disciplina)
-        ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- ============================================================
 -- TURMA
 -- ============================================================
 
@@ -258,6 +227,13 @@ ALTER TABLE turma
     -- Ex.: CCODM2B pode existir em 2026/1 e 2026/2.
     ADD CONSTRAINT uq_turma_periodo_codigo
         UNIQUE (id_periodo_letivo, codigo_turma),
+
+    -- Redundante como unicidade (id_turma já é PK), mas é o alvo exigido
+    -- pela FK composta de turma_horario: FK precisa de PK ou UNIQUE que
+    -- cubra exatamente as colunas referenciadas. Mesmo padrão de
+    -- uq_curriculo_id_curso.
+    ADD CONSTRAINT uq_turma_id_periodo
+        UNIQUE (id_turma, id_periodo_letivo),
 
     -- Impede código vazio ou formado apenas por espaços.
     ADD CONSTRAINT ck_turma_codigo_preenchido
@@ -337,20 +313,26 @@ ALTER TABLE turma_horario
         AND lower(faixa_turma_horario) IS NOT NULL
         AND upper(faixa_turma_horario) IS NOT NULL),
 
-    -- Impede duas turmas na mesma sala, no mesmo dia,
-    -- com horários sobrepostos.
-    -- Utiliza btree_gist para permitir '=' em id_sala e dia_semana_turma_horario.
+    -- Impede duas turmas na mesma sala, no mesmo período letivo e no
+    -- mesmo dia, com horários sobrepostos. Com id_periodo_letivo no EXCLUDE,
+    -- a mesma sala e horário podem ser usados de novo no semestre seguinte.
+    -- Utiliza btree_gist para permitir '=' nas colunas escalares.
     ADD CONSTRAINT ex_turma_horario_sala_ocupada
         EXCLUDE USING gist (
             id_sala WITH =,
+            id_periodo_letivo WITH =,
             dia_semana_turma_horario WITH =,
             faixa_turma_horario WITH &&
         ),
 
-    -- Relaciona o horário à turma.
-    -- CASCADE exclui os horários quando a turma é excluída.
+    -- FK COMPOSTA para turma: além de a turma existir, o período gravado
+    -- aqui tem de ser o mesmo da turma. Sem ela, id_periodo_letivo poderia
+    -- divergir e o EXCLUDE compararia semestres errados.
+    -- CASCADE exclui os horários quando a turma é excluída; ON UPDATE
+    -- CASCADE leva junto uma troca de período da turma.
     ADD CONSTRAINT fk_turma_horario_turma
-        FOREIGN KEY (id_turma) REFERENCES turma (id_turma)
+        FOREIGN KEY (id_turma, id_periodo_letivo)
+        REFERENCES turma (id_turma, id_periodo_letivo)
         ON DELETE CASCADE ON UPDATE CASCADE,
 
     -- Relaciona o horário à sala.
@@ -360,14 +342,10 @@ ALTER TABLE turma_horario
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 COMMENT ON CONSTRAINT ex_turma_horario_sala_ocupada ON turma_horario IS
-    'Escopo: sala + dia + faixa horária. LIMITE CONHECIDO E DELIBERADO: não '
-    'inclui id_periodo_letivo, que vive em turma e é inalcançável — EXCLUDE, '
-    'como CHECK, só enxerga colunas da própria linha. Com carga de um único '
-    'período o comportamento é correto; com múltiplos períodos bloquearia o '
-    'reuso legítimo da mesma sala e horário entre semestres. Incluir exigiria '
-    'denormalizar id_periodo_letivo nesta tabela (alteraria o modelo) ou uma '
-    'trigger com join em turma. Também não cobre conflito de professor nem '
-    'a mesma turma com horários sobrepostos em salas diferentes.';
+    'Escopo: sala + período letivo + dia + faixa horária. id_periodo_letivo é '
+    'copiado de turma e mantido igual pela FK composta fk_turma_horario_turma. '
+    'Não cobre conflito de professor nem a mesma turma com horários '
+    'sobrepostos em salas diferentes (conferidos na carga, 04).';
 
 -- ============================================================
 -- CURRICULO_DISCIPLINA
@@ -396,6 +374,45 @@ ALTER TABLE curriculo_disciplina
     -- Mesma assimetria de pre_requisito: composição em cascata, catálogo restrito.
     ADD CONSTRAINT fk_curriculo_disciplina_disciplina
         FOREIGN KEY (id_disciplina) REFERENCES disciplina (id_disciplina)
+        ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- ============================================================
+-- PRE_REQUISITO
+-- ============================================================
+
+-- Vem depois de CURRICULO_DISCIPLINA: as FKs compostas abaixo apontam para a
+-- PK de curriculo_disciplina, que precisa existir antes.
+
+ALTER TABLE pre_requisito
+    -- Chave primária: currículo + par de disciplinas.
+    -- Impede que a mesma exigência seja cadastrada duas vezes na mesma grade.
+    -- A mesma exigência pode existir em currículos diferentes.
+    ADD CONSTRAINT pk_pre_requisito
+        PRIMARY KEY (id_curriculo, id_disciplina, id_disciplina_requisito),
+
+    -- Impede que uma disciplina seja requisito dela mesma.
+    -- Ex.: Algoritmos I não pode exigir Algoritmos I.
+    -- Não impede ciclos maiores, como A → B → A.
+    ADD CONSTRAINT ck_pre_requisito_sem_autorreferencia
+        CHECK (id_disciplina <> id_disciplina_requisito),
+
+    -- FK COMPOSTA para curriculo_disciplina: a disciplina que exige tem de
+    -- estar na grade deste currículo. Substitui a FK simples para disciplina
+    -- (a existência da disciplina vem junto, via curriculo_disciplina).
+    -- CASCADE: tirar a disciplina da grade apaga as exigências dela.
+    ADD CONSTRAINT fk_pre_requisito_disciplina
+        FOREIGN KEY (id_curriculo, id_disciplina)
+        REFERENCES curriculo_disciplina (id_curriculo, id_disciplina)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    -- FK COMPOSTA: o requisito também tem de estar na MESMA grade. As duas
+    -- FKs compartilham id_curriculo, então uma exigência nunca mistura
+    -- disciplinas de currículos diferentes.
+    -- RESTRICT: impede tirar da grade uma disciplina que ainda é requisito
+    -- de outra.
+    ADD CONSTRAINT fk_pre_requisito_requisito
+        FOREIGN KEY (id_curriculo, id_disciplina_requisito)
+        REFERENCES curriculo_disciplina (id_curriculo, id_disciplina)
         ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================

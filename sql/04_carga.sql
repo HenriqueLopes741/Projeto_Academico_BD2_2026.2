@@ -386,7 +386,7 @@ CROSS JOIN LATERAL unnest(m.codigos) AS u(codigo);
 -- o requisito. Regras de transcrição:
 --   - "deve ser cursado junto com" e "(matr)"  -> co_requisito
 --   - os demais                                -> pre_requisito
---   - um requisito que aparece nas duas tabelas entra uma vez só
+--   - um requisito que aparece nas duas tabelas é escrito uma vez só abaixo
 --
 -- Fica de fora o que não é "disciplina exige disciplina":
 --   - "75% CH concluída" (Tópicos em Computação) e a regra de 75% das
@@ -397,90 +397,112 @@ CROSS JOIN LATERAL unnest(m.codigos) AS u(codigo);
 --     de Engenharia: a tabela os cita, mas não estão na matriz curricular de
 --     Engenharia usada no catálogo.
 --
--- pre_requisito é do catálogo, não de um currículo (a tabela não tem curso).
--- Duas disciplinas têm exigência diferente em cada curso, e as duas linhas
--- entram:
+-- pre_requisito é por currículo (modelo v3). Cada linha da lista abaixo vira
+-- uma exigência em todo currículo que tem as duas disciplinas na grade; a
+-- coluna "curso" restringe a um curso só. Duas disciplinas têm exigência
+-- diferente em cada curso:
 --   Sistemas Digitais:      CCO exige Fund. de Lógica; ECO exige Práticas de Eng.
 --   Linguagens Formais:     CCO exige Teoria da Computação; ECO exige Estr. de Dados.
--- Para um aluno, só valem os requisitos que existem na grade do curso dele.
--- A conferência no fim do bloco trata exatamente isso.
+-- Sem a restrição, LFA <- ED valeria também em CCO, porque Estrutura de Dados
+-- está na grade de CCO.
+--
+-- A lista fica numa tabela temporária para a conferência do fim do bloco
+-- poder checar que toda linha virou pelo menos uma exigência.
 --
 -- As cadeias mais longas, só de pre_requisito, têm 4 níveis, ex.:
 -- Compiladores -> Linguagens Formais -> Estrutura de Dados -> Algoritmos II ->
 -- Algoritmos I.
 
-INSERT INTO pre_requisito
-    (id_disciplina, id_disciplina_requisito, vinculo_pre_requisito)
-SELECT
-    (SELECT id_disciplina FROM disciplina WHERE codigo_disciplina = v.disciplina),
-    (SELECT id_disciplina FROM disciplina WHERE codigo_disciplina = v.requisito),
-    v.vinculo::vinculo_t
-FROM (VALUES
-    -- Tabela de CCO
-    ('ALG',  'GAV',  'pre_requisito'),
-    ('ANA',  'ED',   'pre_requisito'),
-    ('ALP2', 'ALP1', 'pre_requisito'),
-    ('AOC',  'SDG',  'pre_requisito'),
-    ('BD1',  'MDI',  'pre_requisito'),
-    ('BD2',  'BD1',  'pre_requisito'),
-    ('CNU',  'CAL2', 'pre_requisito'),
-    ('CAL1', 'TMA',  'pre_requisito'),
-    ('CAL2', 'CAL1', 'pre_requisito'),
-    ('CMP',  'LFA',  'pre_requisito'),
-    ('CGR',  'CAL1', 'pre_requisito'),
-    ('CGR',  'ALG',  'pre_requisito'),
-    ('ESW',  'BD1',  'pre_requisito'),
-    ('ED',   'ALP2', 'pre_requisito'),
-    ('IA1',  'ALP2', 'pre_requisito'),
-    ('IA2',  'IA1',  'pre_requisito'),
-    ('LFA',  'TCP',  'pre_requisito'),
-    ('PDM',  'POO',  'pre_requisito'),
-    ('PDM',  'ED',   'pre_requisito'),
-    ('PLP',  'ED',   'pre_requisito'),
-    ('POO',  'ALP2', 'pre_requisito'),
-    ('PES',  'CAL1', 'pre_requisito'),
-    ('PIM',  'CAL2', 'pre_requisito'),
-    ('PPA',  'ED',   'pre_requisito'),
-    ('PI2A', 'ED',   'co_requisito'),
-    ('PI3A', 'PDM',  'co_requisito'),
-    ('PI3B', 'TGR',  'co_requisito'),
-    ('RC1',  'PES',  'pre_requisito'),
-    ('SCM',  'PES',  'pre_requisito'),
-    ('SCM',  'ALG',  'pre_requisito'),
-    ('SDG',  'FLG',  'pre_requisito'),
-    ('SDI',  'SO',   'pre_requisito'),
-    ('STR',  'ED',   'pre_requisito'),
-    ('SO',   'ALP2', 'pre_requisito'),
-    ('TCP',  'FLG',  'pre_requisito'),
-    ('TGR',  'ED',   'pre_requisito'),
-    ('TBD',  'BD2',  'pre_requisito'),
-    -- Tabela de Engenharia de Computação (só o que não repete a de CCO)
-    ('ASI',  'MME',  'pre_requisito'),
-    ('CAL3', 'CAL2', 'pre_requisito'),
-    ('CEL',  'PEN',  'pre_requisito'),
-    ('CEL2', 'CEL',  'pre_requisito'),
-    ('CEL2', 'MME',  'pre_requisito'),
-    ('EDG',  'SDG',  'pre_requisito'),
-    ('EBA',  'CEL',  'pre_requisito'),
-    ('LFA',  'ED',   'pre_requisito'),
-    ('MME',  'CAL2', 'co_requisito'),
-    ('PDS',  'SLI',  'pre_requisito'),
-    ('PIED', 'EDG',  'co_requisito'),
-    ('PSM',  'PDS',  'pre_requisito'),
-    ('SDG',  'PEN',  'pre_requisito'),
-    ('SLI',  'ASI',  'pre_requisito'),
-    ('TIC',  'SLI',  'pre_requisito')
-) AS v(disciplina, requisito, vinculo);
+CREATE TEMP TABLE pre_requisito_fonte (
+    disciplina varchar(10) NOT NULL,
+    requisito  varchar(10) NOT NULL,
+    vinculo    vinculo_t   NOT NULL,
+    curso      varchar(10)            -- NULL = vale em todo currículo
+) ON COMMIT DROP;
 
--- Conferência: a coerência entre pre_requisito e as grades envolve três
--- tabelas e não cabe em constraint. Se a carga violar alguma regra, o script
--- para aqui em vez de seguir com dados incoerentes.
---
--- Como pre_requisito é do catálogo, a regra vale por currículo e só olha os
--- pares em que disciplina e requisito estão na mesma grade:
+INSERT INTO pre_requisito_fonte (disciplina, requisito, vinculo, curso) VALUES
+    -- Tabela de CCO
+    ('ALG',  'GAV',  'pre_requisito', NULL),
+    ('ANA',  'ED',   'pre_requisito', NULL),
+    ('ALP2', 'ALP1', 'pre_requisito', NULL),
+    ('AOC',  'SDG',  'pre_requisito', NULL),
+    ('BD1',  'MDI',  'pre_requisito', NULL),
+    ('BD2',  'BD1',  'pre_requisito', NULL),
+    ('CNU',  'CAL2', 'pre_requisito', NULL),
+    ('CAL1', 'TMA',  'pre_requisito', NULL),
+    ('CAL2', 'CAL1', 'pre_requisito', NULL),
+    ('CMP',  'LFA',  'pre_requisito', NULL),
+    ('CGR',  'CAL1', 'pre_requisito', NULL),
+    ('CGR',  'ALG',  'pre_requisito', NULL),
+    ('ESW',  'BD1',  'pre_requisito', NULL),
+    ('ED',   'ALP2', 'pre_requisito', NULL),
+    ('IA1',  'ALP2', 'pre_requisito', NULL),
+    ('IA2',  'IA1',  'pre_requisito', NULL),
+    ('LFA',  'TCP',  'pre_requisito', 'CCO'),
+    ('PDM',  'POO',  'pre_requisito', NULL),
+    ('PDM',  'ED',   'pre_requisito', NULL),
+    ('PLP',  'ED',   'pre_requisito', NULL),
+    ('POO',  'ALP2', 'pre_requisito', NULL),
+    ('PES',  'CAL1', 'pre_requisito', NULL),
+    ('PIM',  'CAL2', 'pre_requisito', NULL),
+    ('PPA',  'ED',   'pre_requisito', NULL),
+    ('PI2A', 'ED',   'co_requisito', NULL),
+    ('PI3A', 'PDM',  'co_requisito', NULL),
+    ('PI3B', 'TGR',  'co_requisito', NULL),
+    ('RC1',  'PES',  'pre_requisito', NULL),
+    ('SCM',  'PES',  'pre_requisito', NULL),
+    ('SCM',  'ALG',  'pre_requisito', NULL),
+    ('SDG',  'FLG',  'pre_requisito', 'CCO'),
+    ('SDI',  'SO',   'pre_requisito', NULL),
+    ('STR',  'ED',   'pre_requisito', NULL),
+    ('SO',   'ALP2', 'pre_requisito', NULL),
+    ('TCP',  'FLG',  'pre_requisito', NULL),
+    ('TGR',  'ED',   'pre_requisito', NULL),
+    ('TBD',  'BD2',  'pre_requisito', NULL),
+    -- Tabela de Engenharia de Computação (só o que não repete a de CCO)
+    ('ASI',  'MME',  'pre_requisito', NULL),
+    ('CAL3', 'CAL2', 'pre_requisito', NULL),
+    ('CEL',  'PEN',  'pre_requisito', NULL),
+    ('CEL2', 'CEL',  'pre_requisito', NULL),
+    ('CEL2', 'MME',  'pre_requisito', NULL),
+    ('EDG',  'SDG',  'pre_requisito', NULL),
+    ('EBA',  'CEL',  'pre_requisito', NULL),
+    ('LFA',  'ED',   'pre_requisito', 'ECO'),
+    ('MME',  'CAL2', 'co_requisito', NULL),
+    ('PDS',  'SLI',  'pre_requisito', NULL),
+    ('PIED', 'EDG',  'co_requisito', NULL),
+    ('PSM',  'PDS',  'pre_requisito', NULL),
+    ('SDG',  'PEN',  'pre_requisito', 'ECO'),
+    ('SLI',  'ASI',  'pre_requisito', NULL),
+    ('TIC',  'SLI',  'pre_requisito', NULL);
+
+INSERT INTO pre_requisito
+    (id_curriculo, id_disciplina, id_disciplina_requisito, vinculo_pre_requisito)
+SELECT
+    cd.id_curriculo,
+    cd.id_disciplina,
+    rq.id_disciplina,
+    f.vinculo
+FROM pre_requisito_fonte f
+JOIN disciplina d ON d.codigo_disciplina = f.disciplina
+JOIN disciplina r ON r.codigo_disciplina = f.requisito
+JOIN curriculo_disciplina cd ON cd.id_disciplina = d.id_disciplina
+JOIN curriculo_disciplina rq
+  ON rq.id_curriculo  = cd.id_curriculo
+ AND rq.id_disciplina = r.id_disciplina
+JOIN curriculo cu ON cu.id_curriculo = cd.id_curriculo
+JOIN curso c      ON c.id_curso      = cu.id_curso
+WHERE f.curso IS NULL OR f.curso = c.codigo_curso;
+
+-- Conferência: a ordem dos semestres envolve duas linhas de
+-- curriculo_disciplina e não cabe em constraint. Se a carga violar alguma
+-- regra, o script para aqui em vez de seguir com dados incoerentes.
+-- (Que disciplina e requisito estão na mesma grade, as FKs compostas já
+-- garantem.)
 --   1. pre_requisito: o requisito vem em semestre anterior da grade;
 --   2. co_requisito: o requisito vem no mesmo semestre ou antes;
---   3. toda linha vale em pelo menos uma grade (senão seria letra morta).
+--   3. toda linha da lista virou pelo menos uma exigência (senão seria
+--      letra morta, ex.: código digitado errado).
 
 DO $$
 DECLARE
@@ -488,9 +510,11 @@ DECLARE
 BEGIN
     SELECT count(*) INTO violacoes
     FROM pre_requisito p
-    JOIN curriculo_disciplina cd ON cd.id_disciplina = p.id_disciplina
+    JOIN curriculo_disciplina cd
+      ON cd.id_curriculo  = p.id_curriculo
+     AND cd.id_disciplina = p.id_disciplina
     JOIN curriculo_disciplina rq
-      ON rq.id_curriculo = cd.id_curriculo
+      ON rq.id_curriculo  = p.id_curriculo
      AND rq.id_disciplina = p.id_disciplina_requisito
     WHERE p.vinculo_pre_requisito = 'pre_requisito'
       AND rq.periodo_curriculo_disciplina >= cd.periodo_curriculo_disciplina;
@@ -500,9 +524,11 @@ BEGIN
 
     SELECT count(*) INTO violacoes
     FROM pre_requisito p
-    JOIN curriculo_disciplina cd ON cd.id_disciplina = p.id_disciplina
+    JOIN curriculo_disciplina cd
+      ON cd.id_curriculo  = p.id_curriculo
+     AND cd.id_disciplina = p.id_disciplina
     JOIN curriculo_disciplina rq
-      ON rq.id_curriculo = cd.id_curriculo
+      ON rq.id_curriculo  = p.id_curriculo
      AND rq.id_disciplina = p.id_disciplina_requisito
     WHERE p.vinculo_pre_requisito = 'co_requisito'
       AND rq.periodo_curriculo_disciplina > cd.periodo_curriculo_disciplina;
@@ -511,16 +537,17 @@ BEGIN
     END IF;
 
     SELECT count(*) INTO violacoes
-    FROM pre_requisito p
+    FROM pre_requisito_fonte f
     WHERE NOT EXISTS (
         SELECT 1
-        FROM curriculo_disciplina cd
-        JOIN curriculo_disciplina rq ON rq.id_curriculo = cd.id_curriculo
-        WHERE cd.id_disciplina = p.id_disciplina
-          AND rq.id_disciplina = p.id_disciplina_requisito
+        FROM pre_requisito p
+        JOIN disciplina d ON d.id_disciplina = p.id_disciplina
+        JOIN disciplina r ON r.id_disciplina = p.id_disciplina_requisito
+        WHERE d.codigo_disciplina = f.disciplina
+          AND r.codigo_disciplina = f.requisito
     );
     IF violacoes > 0 THEN
-        RAISE EXCEPTION 'carga: % pre_requisito(s) que não valem em nenhuma grade', violacoes;
+        RAISE EXCEPTION 'carga: % linha(s) da lista de pré-requisitos sem nenhuma grade', violacoes;
     END IF;
 END
 $$;
@@ -591,10 +618,11 @@ JOIN (SELECT id_professor,
 -- TURMA_HORARIO
 -- ============================================================
 
--- Só as turmas de 2026/2 recebem horário. O EXCLUDE de turma_horario ignora o
--- período letivo (só enxerga a própria linha): dar horário aos semestres
--- antigos na mesma sala e faixa faria o banco rejeitar o reuso legítimo da
--- sala entre semestres. Turma sem horário é válida no modelo.
+-- Só as turmas de 2026/2 recebem horário: a grade dos semestres encerrados
+-- não é usada por nenhuma consulta. Turma sem horário é válida no modelo.
+-- id_periodo_letivo vem da própria turma (a FK composta em 03 exige isso), e
+-- o EXCLUDE usa essa coluna para liberar a mesma sala e faixa em outro
+-- semestre.
 --
 -- Faixas (semiabertas [), aula que termina às 09:10 não conflita com a que
 -- começa às 09:10):
@@ -613,15 +641,17 @@ JOIN (SELECT id_professor,
 -- turnos. O EXCLUDE (03) garante, de qualquer forma, que não haja conflito.
 
 INSERT INTO turma_horario
-    (id_turma, id_sala, dia_semana_turma_horario, faixa_turma_horario)
+    (id_turma, id_periodo_letivo, id_sala, dia_semana_turma_horario, faixa_turma_horario)
 SELECT
     t.id_turma,
+    t.id_periodo_letivo,
     s.id_sala,
     sl.dia,
     timerange(sl.inicio, sl.fim, '[)')
 FROM (
     -- ordem da disciplina dentro da coorte (0..5) define quais faixas ela usa
     SELECT t.id_turma,
+           t.id_periodo_letivo,
            t.turno_turma,
            left(t.codigo_turma, 3) AS curso,
            d.ch_pratica_disciplina,
@@ -656,7 +686,7 @@ JOIN sala s
      END;
 
 -- Conferência: duas regras que o EXCLUDE não cobre (ele só olha a sala).
---   1. nenhum professor em duas turmas ao mesmo tempo;
+--   1. nenhum professor em duas turmas ao mesmo tempo, no mesmo semestre;
 --   2. a sala comporta as vagas da turma.
 
 DO $$
@@ -668,6 +698,7 @@ BEGIN
     JOIN turma t1 ON t1.id_turma = h1.id_turma
     JOIN turma_horario h2
       ON h2.id_turma_horario > h1.id_turma_horario
+     AND h2.id_periodo_letivo = h1.id_periodo_letivo
      AND h2.dia_semana_turma_horario = h1.dia_semana_turma_horario
      AND h2.faixa_turma_horario && h1.faixa_turma_horario
     JOIN turma t2 ON t2.id_turma = h2.id_turma

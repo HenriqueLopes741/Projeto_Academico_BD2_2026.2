@@ -17,10 +17,10 @@
 -- Ordem das tabelas abaixo == ordem de dependência de FK, preservada
 -- mesmo sem FK declarada aqui (facilita ler 02 e 03 lado a lado):
 --   1. campus, disciplina, periodo_letivo, professor
---   2. curso, sala, feriado, pre_requisito, turma
+--   2. curso, sala, feriado, turma
 --   3. curriculo, turma_horario
 --   4. curriculo_disciplina, aluno
---   5. matricula
+--   5. pre_requisito (depende de curriculo_disciplina), matricula
 --   6. historico
 --   7. log_matricula (a qualquer momento — sem FK no modelo)
 --
@@ -296,38 +296,6 @@ COMMENT ON COLUMN feriado.id_campus IS
     'de feriado nacional na mesma data seja rejeitada.';
 
 -- ============================================================
--- PRE_REQUISITO
--- ============================================================
-
--- Tabela associativa de pré-requisitos entre disciplinas.
--- É um auto-relacionamento N:N: uma disciplina pode exigir várias
--- disciplinas e também pode ser requisito de várias outras.
-
-CREATE TABLE pre_requisito(
-    -- Disciplina que possui o requisito, ou seja, a disciplina
-    -- que vem depois na sequência.
-    id_disciplina integer NOT NULL,
-
-    -- Disciplina que está sendo exigida como requisito.
-    id_disciplina_requisito integer NOT NULL,
-
-    -- Tipo do vínculo entre as disciplinas, definido pelo ENUM
-    -- vinculo_t. Obrigatório para identificar a natureza da relação.
-    vinculo_pre_requisito vinculo_t NOT NULL
-);
-
-COMMENT ON TABLE pre_requisito IS
-    'Auto-relacionamento N:N de disciplina. Base da consulta recursiva da '
-    'árvore de pré-requisitos. Ciclos maiores que 1 NÃO são impedidos por '
-    'constraint — é limitação conceitual, não de sintaxe.';
-COMMENT ON COLUMN pre_requisito.id_disciplina IS
-    'Disciplina que exige. ON DELETE CASCADE (03): apagar a disciplina apaga suas '
-    'exigências, que não fazem sentido sem ela.';
-COMMENT ON COLUMN pre_requisito.id_disciplina_requisito IS
-    'Disciplina exigida. ON DELETE RESTRICT (03): apagá-la quebraria a grade de '
-    'outras disciplinas silenciosamente.';
-
--- ============================================================
 -- TURMA
 -- ============================================================
 
@@ -423,6 +391,12 @@ CREATE TABLE turma_horario(
     -- Deve existir em turma.id_turma.
     id_turma integer NOT NULL,
 
+    -- Período letivo da turma, repetido aqui para o EXCLUDE (03) poder
+    -- separar semestres: EXCLUDE só enxerga colunas da própria linha.
+    -- A FK composta (id_turma, id_periodo_letivo) -> turma garante que o
+    -- valor é sempre o mesmo da turma.
+    id_periodo_letivo smallint NOT NULL,
+
     -- Sala onde a aula será realizada.
     -- Deve existir em sala.id_sala.
     id_sala integer NOT NULL,
@@ -438,7 +412,11 @@ CREATE TABLE turma_horario(
 
 COMMENT ON TABLE turma_horario IS
     'Grade de horários. O EXCLUDE (03) impede duas turmas na mesma sala, no mesmo '
-    'dia, em faixas sobrepostas — regra entre linhas, impossível via CHECK.';
+    'período letivo e dia, em faixas sobrepostas — regra entre linhas, '
+    'impossível via CHECK.';
+COMMENT ON COLUMN turma_horario.id_periodo_letivo IS
+    'Cópia controlada de turma.id_periodo_letivo (FK composta em 03). Existe '
+    'para o EXCLUDE permitir a mesma sala e horário em semestres diferentes.';
 COMMENT ON COLUMN turma_horario.faixa_turma_horario IS
     'timerange criado no 01_tipos_dominios.sql (não é tipo nativo). Usar '
     'sempre limite [) para que aulas contíguas não conflitem.';
@@ -469,6 +447,49 @@ COMMENT ON TABLE curriculo_disciplina IS
     'consulta recursiva das disciplinas que um aluno já pode cursar.';
 COMMENT ON COLUMN curriculo_disciplina.periodo_curriculo_disciplina IS
     'Semestre da GRADE (1º, 2º...), não o periodo_letivo calendário.';
+
+-- ============================================================
+-- PRE_REQUISITO
+-- ============================================================
+
+-- Tabela associativa de pré-requisitos entre disciplinas, por currículo.
+-- É um auto-relacionamento N:N: uma disciplina pode exigir várias
+-- disciplinas e também pode ser requisito de várias outras.
+--
+-- Modelo v3: a exigência pertence a um currículo, não ao catálogo. A mesma
+-- disciplina pode ter requisitos diferentes em cada curso (ex.: Linguagens
+-- Formais exige Teoria da Computação em CCO e Estrutura de Dados em ECO).
+-- Sem id_curriculo, as duas exigências valeriam para os dois cursos.
+
+CREATE TABLE pre_requisito(
+    -- Currículo em que a exigência vale.
+    id_curriculo integer NOT NULL,
+
+    -- Disciplina que possui o requisito, ou seja, a disciplina
+    -- que vem depois na sequência.
+    id_disciplina integer NOT NULL,
+
+    -- Disciplina que está sendo exigida como requisito.
+    id_disciplina_requisito integer NOT NULL,
+
+    -- Tipo do vínculo entre as disciplinas, definido pelo ENUM
+    -- vinculo_t. Obrigatório para identificar a natureza da relação.
+    vinculo_pre_requisito vinculo_t NOT NULL
+);
+
+COMMENT ON TABLE pre_requisito IS
+    'Auto-relacionamento N:N de disciplina, dentro de um currículo. Base da '
+    'consulta recursiva da árvore de pré-requisitos. Ciclos maiores que 1 NÃO '
+    'são impedidos por constraint — é limitação conceitual, não de sintaxe.';
+COMMENT ON COLUMN pre_requisito.id_curriculo IS
+    'Currículo em que a exigência vale. Faz parte das duas FKs compostas para '
+    'curriculo_disciplina (03): disciplina e requisito têm de estar na mesma grade.';
+COMMENT ON COLUMN pre_requisito.id_disciplina IS
+    'Disciplina que exige. ON DELETE CASCADE (03): tirar a disciplina da grade '
+    'apaga suas exigências, que não fazem sentido sem ela.';
+COMMENT ON COLUMN pre_requisito.id_disciplina_requisito IS
+    'Disciplina exigida. ON DELETE RESTRICT (03): tirá-la da grade quebraria a '
+    'sequência de outras disciplinas silenciosamente.';
 
 -- ============================================================
 -- ALUNO

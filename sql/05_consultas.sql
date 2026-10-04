@@ -93,3 +93,44 @@ WHERE pl.ano_periodo_letivo      = 2026
 GROUP BY t.id_turma, t.codigo_turma, d.nome_disciplina, t.vagas_turma
 HAVING t.vagas_turma - COUNT(*) <= 1
 ORDER BY vagas_restantes, t.codigo_turma;
+
+
+-- ---------------------------------------------------------------------
+-- Q3 — Catálogo inteiro x oferta de 2026/2 (junção externa + agregação)
+-- ---------------------------------------------------------------------
+-- Objetivo: para TODAS as disciplinas do catálogo, quantas turmas
+-- foram abertas em 2026/2 e quantos alunos estão matriculados.
+-- Disciplina sem oferta no semestre tem que aparecer com zero.
+--
+-- Técnica: LEFT JOIN + COUNT(coluna).
+--   LEFT JOIN mantém toda linha da tabela da esquerda (disciplina),
+--   mesmo sem par na direita; as colunas da direita vêm NULL.
+--   COUNT(coluna) não conta NULL, então disciplina sem turma dá 0.
+--
+-- Armadilha 1 — COUNT(*) daria 1, e não 0, para disciplina sem turma:
+-- a linha com NULLs existe e COUNT(*) conta linhas, não valores.
+--
+-- Armadilha 2 — os filtros da tabela da direita (semestre da turma e
+-- status da matrícula) ficam no ON, não no WHERE. No WHERE, a
+-- comparação com NULL não é verdadeira, a linha da disciplina sem
+-- oferta é descartada e o LEFT JOIN vira um INNER JOIN disfarçado.
+--
+-- COUNT(DISTINCT t.id_turma): cada turma se repete uma vez por
+-- matrícula depois do segundo JOIN; o DISTINCT conta cada turma uma vez.
+SELECT
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    COUNT(DISTINCT t.id_turma) AS turmas_2026_2,
+    COUNT(m.id_matricula)      AS matriculados
+FROM disciplina d
+LEFT JOIN turma t
+       ON t.id_disciplina     = d.id_disciplina
+      AND t.id_periodo_letivo = (SELECT pl.id_periodo_letivo
+                                   FROM periodo_letivo pl
+                                  WHERE pl.ano_periodo_letivo      = 2026
+                                    AND pl.semestre_periodo_letivo = 2)
+LEFT JOIN matricula m
+       ON m.id_turma         = t.id_turma
+      AND m.status_matricula = 'ativa'
+GROUP BY d.id_disciplina, d.codigo_disciplina, d.nome_disciplina
+ORDER BY matriculados DESC, d.codigo_disciplina;

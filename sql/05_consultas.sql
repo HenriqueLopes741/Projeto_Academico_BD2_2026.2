@@ -402,3 +402,107 @@ WHERE NOT EXISTS (                       -- ainda não aprovada
          WHERE r.id_disciplina = cd.id_disciplina
            AND r.id_requisito NOT IN (SELECT id_disciplina FROM cumpridas))
 ORDER BY cd.periodo_curriculo_disciplina, d.codigo_disciplina;
+
+
+-- ---------------------------------------------------------------------
+-- Q8 — Cada aluno x a própria turma (função de janela de agregação)
+-- ---------------------------------------------------------------------
+-- Objetivo: na turma CCODM2A-ED (Estrutura de Dados, 2026/1), mostrar a
+-- média final de cada aluno ao lado da média, da maior e da menor nota
+-- da turma, e quanto o aluno ficou acima ou abaixo da média.
+--
+-- Técnica: AVG/MAX/MIN com OVER (PARTITION BY ...).
+--   GROUP BY junta as linhas e devolve UMA por grupo: a média da turma
+--   apareceria, mas o aluno sumiria.
+--   A função de janela calcula o mesmo agregado sobre o grupo (a
+--   "janela") e repete o valor em CADA linha, sem juntar nada. Assim
+--   o dado individual e o do grupo ficam lado a lado.
+--   PARTITION BY m.id_turma define a janela: cada turma é um grupo.
+--   A WINDOW turma_w nomeia a janela uma vez e evita repetir o OVER.
+--
+-- Só entra quem tem média final: trancada e cursando têm média NULL
+-- (ausência de nota não é zero) e distorceriam a média da turma.
+SELECT
+    a.matricula_aluno,
+    a.nome_aluno,
+    h.media_final_historico                          AS media_aluno,
+    h.situacao_historico,
+    ROUND(AVG(h.media_final_historico) OVER turma_w, 2) AS media_turma,
+    MAX(h.media_final_historico)       OVER turma_w     AS maior_turma,
+    MIN(h.media_final_historico)       OVER turma_w     AS menor_turma,
+    ROUND(h.media_final_historico
+          - AVG(h.media_final_historico) OVER turma_w, 2) AS diferenca
+FROM historico h
+JOIN matricula m ON m.id_matricula = h.id_matricula
+JOIN aluno     a ON a.id_aluno     = m.id_aluno
+JOIN turma     t ON t.id_turma     = m.id_turma
+WHERE t.codigo_turma = 'CCODM2A-ED'
+  AND h.media_final_historico IS NOT NULL
+WINDOW turma_w AS (PARTITION BY m.id_turma)
+ORDER BY diferenca DESC;
+
+
+-- ---------------------------------------------------------------------
+-- Q9 — Ranking e percentil dos alunos dentro do curso (janela)
+-- ---------------------------------------------------------------------
+-- Objetivo: ordenar os alunos de cada curso pela média geral (média
+-- das médias finais das disciplinas já encerradas) e mostrar a posição,
+-- o percentil e o quartil de cada um. Lista o top 10 de cada curso.
+--
+-- Técnica: funções de janela de ranking com
+-- OVER (PARTITION BY curso ORDER BY média DESC).
+--   PARTITION BY id_curso -> CCO e ECO são rankeados separadamente;
+--   ORDER BY média DESC   -> define quem vem primeiro.
+--   RANK()         -> posição; empate divide a posição e PULA a seguinte
+--                     (1, 2, 2, 4).
+--   DENSE_RANK()   -> igual, mas NÃO pula (1, 2, 2, 3).
+--   PERCENT_RANK() -> (rank - 1) / (total - 1): 0 = melhor, 1 = pior.
+--                     Aqui exibido como "à frente de X% do curso".
+--   NTILE(4)       -> divide o curso em 4 faixas de tamanho igual
+--                     (quartil 1 = 25% melhores).
+--
+-- Por que duas CTEs e o filtro de top 10 fora: função de janela é
+-- calculada DEPOIS do WHERE. Não dá para escrever WHERE posicao <= 10
+-- na mesma consulta em que o RANK é calculado; o filtro vai num nível
+-- de fora.
+--
+-- percentile_cont NÃO serve aqui: é agregação (WITHIN GROUP), devolve
+-- UM valor por grupo (ex.: a nota mediana do curso), não a posição de
+-- cada aluno.
+WITH media_aluno AS (
+    SELECT
+        a.id_aluno,
+        a.id_curso,
+        a.matricula_aluno,
+        a.nome_aluno,
+        ROUND(AVG(h.media_final_historico), 2) AS media_geral
+    FROM aluno a
+    JOIN matricula m ON m.id_aluno     = a.id_aluno
+    JOIN historico h ON h.id_matricula = m.id_matricula
+    WHERE h.media_final_historico IS NOT NULL
+      AND h.situacao_historico NOT IN ('cursando', 'trancada')
+    GROUP BY a.id_aluno
+),
+ranking AS (
+    SELECT
+        ma.*,
+        RANK()       OVER curso_w AS posicao,
+        DENSE_RANK() OVER curso_w AS posicao_densa,
+        ROUND((1 - PERCENT_RANK() OVER curso_w)::numeric * 100, 1) AS a_frente_de_pct,
+        NTILE(4)     OVER curso_w AS quartil
+    FROM media_aluno ma
+    WINDOW curso_w AS (PARTITION BY ma.id_curso ORDER BY ma.media_geral DESC)
+)
+SELECT
+    c.codigo_curso,
+    r.posicao,
+    r.posicao_densa,
+    r.matricula_aluno,
+    r.nome_aluno,
+    r.media_geral,
+    r.a_frente_de_pct,
+    r.quartil
+FROM ranking r
+JOIN curso c ON c.id_curso = r.id_curso
+WHERE r.posicao <= 10
+ORDER BY c.codigo_curso, r.posicao, r.nome_aluno;

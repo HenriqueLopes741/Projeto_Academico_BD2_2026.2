@@ -134,3 +134,112 @@ LEFT JOIN matricula m
       AND m.status_matricula = 'ativa'
 GROUP BY d.id_disciplina, d.codigo_disciplina, d.nome_disciplina
 ORDER BY matriculados DESC, d.codigo_disciplina;
+
+
+-- ---------------------------------------------------------------------
+-- Q4 — Alunos que nunca reprovaram (subconsultas com EXISTS / NOT EXISTS)
+-- ---------------------------------------------------------------------
+-- Objetivo: listar quem já concluiu ao menos uma disciplina e não tem
+-- nenhuma reprovação no histórico (nem por nota, nem por falta).
+--
+-- Técnica: subconsulta correlacionada com EXISTS e NOT EXISTS.
+--   "Correlacionada" porque a subconsulta usa a.id_aluno da consulta de
+--   fora: ela é avaliada para cada aluno.
+--   EXISTS só pergunta "existe pelo menos uma linha?"; para na primeira
+--   que encontra e não importa o que vem no SELECT (por isso SELECT 1).
+--
+-- Por que o EXISTS do meio: sem ele, calouro sem nenhuma disciplina
+-- concluída também "nunca reprovou" e entraria na lista por vacuidade.
+--
+-- Por que NOT EXISTS e não NOT IN: se a subconsulta do NOT IN devolver
+-- um único NULL, x NOT IN (...) vira NULL para todo mundo e a consulta
+-- volta vazia. NOT EXISTS não tem esse problema.
+SELECT
+    a.matricula_aluno,
+    a.nome_aluno,
+    c.codigo_curso
+FROM aluno a
+JOIN curso c ON c.id_curso = a.id_curso
+WHERE EXISTS (
+        SELECT 1
+          FROM matricula m
+          JOIN historico h ON h.id_matricula = m.id_matricula
+         WHERE m.id_aluno = a.id_aluno
+           AND h.situacao_historico = 'aprovado'
+      )
+  AND NOT EXISTS (
+        SELECT 1
+          FROM matricula m
+          JOIN historico h ON h.id_matricula = m.id_matricula
+         WHERE m.id_aluno = a.id_aluno
+           AND h.situacao_historico IN ('reprovado_nota',
+                                        'reprovado_falta',
+                                        'reprovado_nota_falta')
+      )
+ORDER BY c.codigo_curso, a.nome_aluno;
+
+
+-- ---------------------------------------------------------------------
+-- Q5 — Taxa de aprovação por disciplina x média geral (CTE + CASE)
+-- ---------------------------------------------------------------------
+-- Objetivo: para cada disciplina já cursada, quantos alunos terminaram,
+-- quantos aprovaram, quantos reprovaram por nota e por falta, e se a
+-- taxa de aprovação está abaixo, na ou acima da média da instituição.
+--
+-- Técnica: duas CTEs encadeadas + CASE em dois papéis.
+--   CTE "resultado": contagens por disciplina.
+--   CTE "geral": lê "resultado" e calcula a taxa da instituição inteira.
+--   A consulta final lê as duas como se fossem tabelas. Cada passo tem
+--   nome e é lido de cima para baixo; sem CTE seriam subconsultas
+--   aninhadas e a conta da taxa repetida em vários lugares.
+--   CASE dentro do SUM transforma cada linha em 1 ou 0 (contagem
+--   condicional). CASE no SELECT final classifica a disciplina.
+--
+-- Por que comparar com a média geral e não com um valor fixo (ex.: 50%):
+-- uma régua fixa não diz nada se todas as disciplinas ficam acima dela.
+-- A margem de 5 pontos evita rotular diferenças pequenas.
+--
+-- Só entra quem terminou a disciplina: 'cursando' e 'trancada' ainda
+-- não têm resultado e distorceriam a taxa.
+-- reprovado_nota_falta conta nas duas colunas de reprovação.
+--
+-- 100.0 (e não 100) força divisão decimal: inteiro / inteiro no
+-- PostgreSQL trunca (3 / 4 = 0).
+WITH resultado AS (
+    SELECT
+        t.id_disciplina,
+        COUNT(*) AS concluintes,
+        SUM(CASE WHEN h.situacao_historico = 'aprovado'
+                 THEN 1 ELSE 0 END) AS aprovados,
+        SUM(CASE WHEN h.situacao_historico IN ('reprovado_nota', 'reprovado_nota_falta')
+                 THEN 1 ELSE 0 END) AS repr_nota,
+        SUM(CASE WHEN h.situacao_historico IN ('reprovado_falta', 'reprovado_nota_falta')
+                 THEN 1 ELSE 0 END) AS repr_falta
+    FROM historico h
+    JOIN matricula m ON m.id_matricula = h.id_matricula
+    JOIN turma     t ON t.id_turma     = m.id_turma
+    WHERE h.situacao_historico NOT IN ('cursando', 'trancada')
+    GROUP BY t.id_disciplina
+),
+geral AS (
+    SELECT 100.0 * SUM(aprovados) / SUM(concluintes) AS taxa_geral
+    FROM resultado
+)
+SELECT
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    r.concluintes,
+    r.aprovados,
+    r.repr_nota,
+    r.repr_falta,
+    ROUND(100.0 * r.aprovados / r.concluintes, 1) AS taxa_aprovacao,
+    ROUND(g.taxa_geral, 1)                         AS taxa_geral,
+    CASE
+        WHEN 100.0 * r.aprovados / r.concluintes < g.taxa_geral - 5 THEN 'abaixo da média'
+        WHEN 100.0 * r.aprovados / r.concluintes > g.taxa_geral + 5 THEN 'acima da média'
+        ELSE 'na média'
+    END AS situacao
+FROM resultado r
+JOIN disciplina d ON d.id_disciplina = r.id_disciplina
+CROSS JOIN geral g
+ORDER BY taxa_aprovacao, d.codigo_disciplina;

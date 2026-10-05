@@ -49,12 +49,12 @@ SELECT
     upper(th.faixa_turma_horario) AS fim,
     s.codigo_sala,
     t.vagas_turma
-FROM turma t
-JOIN disciplina     d  ON d.id_disciplina      = t.id_disciplina
-JOIN professor      p  ON p.id_professor       = t.id_professor
-JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
-JOIN turma_horario  th ON th.id_turma          = t.id_turma
-JOIN sala           s  ON s.id_sala            = th.id_sala
+FROM tb_turma t
+JOIN tb_disciplina     d  ON d.id_disciplina      = t.id_disciplina
+JOIN tb_professor      p  ON p.id_professor       = t.id_professor
+JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+JOIN tb_turma_horario  th ON th.id_turma          = t.id_turma
+JOIN tb_sala           s  ON s.id_sala            = th.id_sala
 WHERE pl.ano_periodo_letivo      = 2026
   AND pl.semestre_periodo_letivo = 2
 ORDER BY th.dia_semana_turma_horario, inicio, t.codigo_turma;
@@ -87,10 +87,10 @@ SELECT
     t.vagas_turma,
     COUNT(*)                 AS matriculados,
     t.vagas_turma - COUNT(*) AS vagas_restantes
-FROM turma t
-JOIN disciplina     d  ON d.id_disciplina      = t.id_disciplina
-JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
-JOIN matricula      m  ON m.id_turma           = t.id_turma
+FROM tb_turma t
+JOIN tb_disciplina     d  ON d.id_disciplina      = t.id_disciplina
+JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+JOIN tb_matricula      m  ON m.id_turma           = t.id_turma
 WHERE pl.ano_periodo_letivo      = 2026
   AND pl.semestre_periodo_letivo = 2
   AND m.status_matricula         = 'ativa'
@@ -126,14 +126,14 @@ SELECT
     d.nome_disciplina,
     COUNT(DISTINCT t.id_turma) AS turmas_2026_2,
     COUNT(m.id_matricula)      AS matriculados
-FROM disciplina d
-LEFT JOIN turma t
+FROM tb_disciplina d
+LEFT JOIN tb_turma t
        ON t.id_disciplina     = d.id_disciplina
       AND t.id_periodo_letivo = (SELECT pl.id_periodo_letivo
-                                   FROM periodo_letivo pl
+                                   FROM tb_periodo_letivo pl
                                   WHERE pl.ano_periodo_letivo      = 2026
                                     AND pl.semestre_periodo_letivo = 2)
-LEFT JOIN matricula m
+LEFT JOIN tb_matricula m
        ON m.id_turma         = t.id_turma
       AND m.status_matricula = 'ativa'
 GROUP BY d.id_disciplina, d.codigo_disciplina, d.nome_disciplina
@@ -162,19 +162,19 @@ SELECT
     a.matricula_aluno,
     a.nome_aluno,
     c.codigo_curso
-FROM aluno a
-JOIN curso c ON c.id_curso = a.id_curso
+FROM tb_aluno a
+JOIN tb_curso c ON c.id_curso = a.id_curso
 WHERE EXISTS (
         SELECT 1
-          FROM matricula m
-          JOIN historico h ON h.id_matricula = m.id_matricula
+          FROM tb_matricula m
+          JOIN tb_historico h ON h.id_matricula = m.id_matricula
          WHERE m.id_aluno = a.id_aluno
            AND h.situacao_historico = 'aprovado'
       )
   AND NOT EXISTS (
         SELECT 1
-          FROM matricula m
-          JOIN historico h ON h.id_matricula = m.id_matricula
+          FROM tb_matricula m
+          JOIN tb_historico h ON h.id_matricula = m.id_matricula
          WHERE m.id_aluno = a.id_aluno
            AND h.situacao_historico IN ('reprovado_nota',
                                         'reprovado_falta',
@@ -219,9 +219,9 @@ WITH resultado AS (
                  THEN 1 ELSE 0 END) AS repr_nota,
         SUM(CASE WHEN h.situacao_historico IN ('reprovado_falta', 'reprovado_nota_falta')
                  THEN 1 ELSE 0 END) AS repr_falta
-    FROM historico h
-    JOIN matricula m ON m.id_matricula = h.id_matricula
-    JOIN turma     t ON t.id_turma     = m.id_turma
+    FROM tb_historico h
+    JOIN tb_matricula m ON m.id_matricula = h.id_matricula
+    JOIN tb_turma     t ON t.id_turma     = m.id_turma
     WHERE h.situacao_historico NOT IN ('cursando', 'trancada')
     GROUP BY t.id_disciplina
 ),
@@ -244,7 +244,7 @@ SELECT
         ELSE 'na média'
     END AS situacao
 FROM resultado r
-JOIN disciplina d ON d.id_disciplina = r.id_disciplina
+JOIN tb_disciplina d ON d.id_disciplina = r.id_disciplina
 CROSS JOIN geral g
 ORDER BY taxa_aprovacao, d.codigo_disciplina;
 
@@ -286,8 +286,8 @@ WITH RECURSIVE arvore AS (
         pr.id_disciplina_requisito                          AS id_requisito,
         1                                                   AS nivel,
         ARRAY[pr.id_disciplina, pr.id_disciplina_requisito] AS caminho
-    FROM pre_requisito pr
-    JOIN disciplina d ON d.id_disciplina = pr.id_disciplina
+    FROM tb_pre_requisito pr
+    JOIN tb_disciplina d ON d.id_disciplina = pr.id_disciplina
     WHERE d.codigo_disciplina      = 'CMP'
       AND pr.vinculo_pre_requisito = 'pre_requisito'
 
@@ -300,7 +300,7 @@ WITH RECURSIVE arvore AS (
         a.nivel + 1,
         a.caminho || pr.id_disciplina_requisito
     FROM arvore a
-    JOIN pre_requisito pr
+    JOIN tb_pre_requisito pr
       ON pr.id_curriculo  = a.id_curriculo
      AND pr.id_disciplina = a.id_requisito
     WHERE pr.vinculo_pre_requisito = 'pre_requisito'
@@ -313,11 +313,11 @@ SELECT
     d.nome_disciplina,
     (SELECT string_agg(dc.codigo_disciplina, ' <- ' ORDER BY x.ord)
        FROM unnest(a.caminho) WITH ORDINALITY AS x(id, ord)
-       JOIN disciplina dc ON dc.id_disciplina = x.id) AS caminho
+       JOIN tb_disciplina dc ON dc.id_disciplina = x.id) AS caminho
 FROM arvore a
-JOIN disciplina d  ON d.id_disciplina = a.id_requisito
-JOIN curriculo cu  ON cu.id_curriculo = a.id_curriculo
-JOIN curso c       ON c.id_curso      = cu.id_curso
+JOIN tb_disciplina d  ON d.id_disciplina = a.id_requisito
+JOIN tb_curriculo cu  ON cu.id_curriculo = a.id_curriculo
+JOIN tb_curso c       ON c.id_curso      = cu.id_curso
 ORDER BY c.codigo_curso, a.caminho;
 
 
@@ -352,7 +352,7 @@ ORDER BY c.codigo_curso, a.caminho;
 WITH RECURSIVE
 aluna AS (
     SELECT id_aluno, id_curriculo
-    FROM aluno
+    FROM tb_aluno
     WHERE matricula_aluno = '202510007'
 ),
 requisitos AS (
@@ -362,7 +362,7 @@ requisitos AS (
         pr.id_disciplina,
         pr.id_disciplina_requisito AS id_requisito,
         ARRAY[pr.id_disciplina, pr.id_disciplina_requisito] AS caminho
-    FROM pre_requisito pr
+    FROM tb_pre_requisito pr
     JOIN aluna al ON al.id_curriculo = pr.id_curriculo
     WHERE pr.vinculo_pre_requisito = 'pre_requisito'
 
@@ -375,7 +375,7 @@ requisitos AS (
         pr.id_disciplina_requisito,
         r.caminho || pr.id_disciplina_requisito
     FROM requisitos r
-    JOIN pre_requisito pr
+    JOIN tb_pre_requisito pr
       ON pr.id_curriculo  = r.id_curriculo
      AND pr.id_disciplina = r.id_requisito
     WHERE pr.vinculo_pre_requisito = 'pre_requisito'
@@ -384,9 +384,9 @@ requisitos AS (
 historico_aluna AS (
     SELECT t.id_disciplina, h.situacao_historico
     FROM aluna al
-    JOIN matricula m ON m.id_aluno     = al.id_aluno
-    JOIN historico h ON h.id_matricula = m.id_matricula
-    JOIN turma     t ON t.id_turma     = m.id_turma
+    JOIN tb_matricula m ON m.id_aluno     = al.id_aluno
+    JOIN tb_historico h ON h.id_matricula = m.id_matricula
+    JOIN tb_turma     t ON t.id_turma     = m.id_turma
 ),
 cumpridas AS (
     SELECT DISTINCT id_disciplina
@@ -399,8 +399,8 @@ SELECT
     d.nome_disciplina,
     cd.tipo_curriculo_disciplina    AS tipo
 FROM aluna al
-JOIN curriculo_disciplina cd ON cd.id_curriculo = al.id_curriculo
-JOIN disciplina d            ON d.id_disciplina = cd.id_disciplina
+JOIN tb_curriculo_disciplina cd ON cd.id_curriculo = al.id_curriculo
+JOIN tb_disciplina d            ON d.id_disciplina = cd.id_disciplina
 WHERE NOT EXISTS (                       -- ainda não aprovada
         SELECT 1 FROM cumpridas c
          WHERE c.id_disciplina = cd.id_disciplina)
@@ -443,10 +443,10 @@ SELECT
     MIN(h.media_final_historico)       OVER turma_w     AS menor_turma,
     ROUND(h.media_final_historico
           - AVG(h.media_final_historico) OVER turma_w, 2) AS diferenca
-FROM historico h
-JOIN matricula m ON m.id_matricula = h.id_matricula
-JOIN aluno     a ON a.id_aluno     = m.id_aluno
-JOIN turma     t ON t.id_turma     = m.id_turma
+FROM tb_historico h
+JOIN tb_matricula m ON m.id_matricula = h.id_matricula
+JOIN tb_aluno     a ON a.id_aluno     = m.id_aluno
+JOIN tb_turma     t ON t.id_turma     = m.id_turma
 WHERE t.codigo_turma = 'CCODM2A-ED'
   AND h.media_final_historico IS NOT NULL
 WINDOW turma_w AS (PARTITION BY m.id_turma)
@@ -487,9 +487,9 @@ WITH media_aluno AS (
         a.matricula_aluno,
         a.nome_aluno,
         ROUND(AVG(h.media_final_historico), 2) AS media_geral
-    FROM aluno a
-    JOIN matricula m ON m.id_aluno     = a.id_aluno
-    JOIN historico h ON h.id_matricula = m.id_matricula
+    FROM tb_aluno a
+    JOIN tb_matricula m ON m.id_aluno     = a.id_aluno
+    JOIN tb_historico h ON h.id_matricula = m.id_matricula
     WHERE h.media_final_historico IS NOT NULL
       AND h.situacao_historico NOT IN ('cursando', 'trancada')
     GROUP BY a.id_aluno
@@ -514,7 +514,7 @@ SELECT
     r.a_frente_de_pct,
     r.quartil
 FROM ranking r
-JOIN curso c ON c.id_curso = r.id_curso
+JOIN tb_curso c ON c.id_curso = r.id_curso
 WHERE r.posicao <= 10
 ORDER BY c.codigo_curso, r.posicao, r.nome_aluno;
 
@@ -550,11 +550,11 @@ WITH media_semestre AS (
         pl.ano_periodo_letivo                  AS ano,
         pl.semestre_periodo_letivo             AS semestre,
         ROUND(AVG(h.media_final_historico), 2) AS media
-    FROM aluno a
-    JOIN matricula      m  ON m.id_aluno           = a.id_aluno
-    JOIN historico      h  ON h.id_matricula       = m.id_matricula
-    JOIN turma          t  ON t.id_turma           = m.id_turma
-    JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+    FROM tb_aluno a
+    JOIN tb_matricula      m  ON m.id_aluno           = a.id_aluno
+    JOIN tb_historico      h  ON h.id_matricula       = m.id_matricula
+    JOIN tb_turma          t  ON t.id_turma           = m.id_turma
+    JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
     WHERE h.media_final_historico IS NOT NULL
       AND h.situacao_historico NOT IN ('cursando', 'trancada')
     GROUP BY a.id_aluno, pl.ano_periodo_letivo, pl.semestre_periodo_letivo

@@ -1,5 +1,5 @@
 -- =====================================================================
--- 04_carga.sql
+-- 02_carga.sql
 -- Carga de dados: grade real de Ciência da Computação (2023/1) e de
 -- Engenharia de Computação, mais alunos, matrículas e histórico gerados
 -- com generate_series (mínimo: 100 alunos, 6 turmas, 300 matrículas).

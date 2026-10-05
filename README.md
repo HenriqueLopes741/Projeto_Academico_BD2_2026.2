@@ -64,10 +64,10 @@ Os scripts são executados **manualmente, um por vez, no Query Tool**, na ordem 
 | Ordem | Arquivo | O que faz |
 |---|---|---|
 | 1 | [sql/01_ddl.sql](sql/01_ddl.sql) | extensão, tipos, domínios e as 16 tabelas com constraints |
-| 2 | [sql/04_carga.sql](sql/04_carga.sql) | carga de dados |
-| 3 | [sql/05_consultas.sql](sql/05_consultas.sql) | as 10 consultas do Marco 1 |
+| 2 | [sql/02_carga.sql](sql/02_carga.sql) | carga de dados |
+| 3 | [sql/03_consultas.sql](sql/03_consultas.sql) | as 10 consultas do Marco 1 |
 
-`06` a `10` compõem o Marco 2 e seguem a mesma ordem.
+`04` a `08` compõem o Marco 2 e seguem a mesma ordem.
 
 ### Passo a passo
 
@@ -83,8 +83,8 @@ Os scripts são executados **manualmente, um por vez, no Query Tool**, na ordem 
 | Script | Resultado esperado na aba **Messages** |
 |---|---|
 | `01_ddl.sql` | `Query returned successfully`, sem erro |
-| `04_carga.sql` | `NOTICE: carga ok: 120 alunos, 83 turmas, 3320 matrículas` |
-| `05_consultas.sql` | ver abaixo |
+| `02_carga.sql` | `NOTICE: carga ok: 120 alunos, 83 turmas, 3320 matrículas` |
+| `03_consultas.sql` | ver abaixo |
 
 Depois do `01_ddl.sql`, clique com o botão direito em **Schemas → public → Tables → Refresh**: as 16 tabelas `tb_*` aparecem.
 

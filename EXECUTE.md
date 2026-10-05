@@ -69,25 +69,25 @@ Os scripts devem ser executados na ordem correta para construir o banco do zero:
 
 ```bash
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_carga.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_consultas.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_views.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_indices.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_transacoes.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/09_seguranca_rls.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/10_backup_restore.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_carga.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_consultas.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_views.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_indices.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_restore.sql
 ```
 
 ### Ordem de execução
 
 1. `01_ddl.sql` — cria extensão, tipos, domínios e as tabelas com todas as constraints;
-4. `04_carga.sql` — insere os dados iniciais;
-5. `05_consultas.sql` — scripts de consultas;
-6. `06_views.sql` — cria as views;
-7. `07_indices.sql` — cria índices;
-8. `08_transacoes.sql` — scripts de transação;
-9. `09_seguranca_rls.sql` — segurança e RLS;
-10. `10_backup_restore.sql` — backup e restauração.
+2. `02_carga.sql` — insere os dados iniciais;
+3. `03_consultas.sql` — scripts de consultas;
+4. `04_views.sql` — cria as views;
+5. `05_indices.sql` — cria índices;
+6. `06_transacoes.sql` — scripts de transação;
+7. `07_seguranca_rls.sql` — segurança e RLS;
+8. `08_backup_restore.sql` — backup e restauração.
 
 > Atenção: scripts de criação, como `01_ddl.sql`, não devem ser executados novamente em um banco que já possui os objetos criados. Isso pode gerar erros como `type already exists` ou `relation already exists`.
 
@@ -104,13 +104,13 @@ Depois, execute os scripts em ordem:
 
 ```bash
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_carga.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_consultas.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_views.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_indices.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_transacoes.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/09_seguranca_rls.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/10_backup_restore.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_carga.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_consultas.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_views.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_indices.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_restore.sql
 ```
 
 ## 4. Como iniciar um banco já existente

@@ -1,8 +1,9 @@
 -- =====================================================================
--- 09_seguranca_rls.sql
--- Roles (aluno, secretaria, coordenacao), GRANT/REVOKE, row-level security
+-- 04_views.sql
+-- 3 views (oferta, vagas, histórico) + 1 materialized view de indicadores
 -- Frente: Administração e Operação
 -- Banco de Dados II (CCO072) — IESB 2026/2
 -- =====================================================================
 --
--- TODO: RLS precisa impedir um aluno de ver o histórico de outro.
+-- TODO: política de atualização da materialized view precisa estar
+-- justificada (REFRESH manual? trigger? cron?).

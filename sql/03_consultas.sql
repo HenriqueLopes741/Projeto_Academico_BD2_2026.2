@@ -1,5 +1,5 @@
 -- =====================================================================
--- 05_consultas.sql — 10 consultas de complexidade crescente
+-- 03_consultas.sql — 10 consultas de complexidade crescente
 -- Banco de Dados II (CCO072) — IESB 2026/2
 -- =====================================================================
 -- Obrigatórias da Seção 4.1 marcadas com *.

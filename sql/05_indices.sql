@@ -1,5 +1,5 @@
 -- =====================================================================
--- 07_indices.sql
+-- 05_indices.sql
 -- Ao menos 4 índices, incluindo 1 parcial
 -- Frente: Modelagem Física e Desempenho
 -- Banco de Dados II (CCO072) — IESB 2026/2

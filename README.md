@@ -38,24 +38,6 @@ Isso levanta:
 
 A base `matricula` sobe **vazia**. O esquema é criado pelos scripts em `sql/`.
 
-## Rodando os scripts SQL
-
-Os arquivos em `sql/` são numerados na ordem real de execução. Rodar `01` → `05` num banco vazio levanta o Marco 1 completo (tipos, tabelas, constraints, carga e consultas):
-
-```bash
-for f in sql/0{1,2,3,4,5}_*.sql; do
-  docker compose exec -T postgres psql -U bd2 -d matricula -v ON_ERROR_STOP=1 -f - < "$f"
-done
-```
-
-Deu certo se aparecer `NOTICE: carga ok: 120 alunos, 83 turmas, 3320 matrículas`, seguido do resultado das 10 consultas. Para conferir as tabelas pelo terminal:
-
-```bash
-docker compose exec postgres psql -U bd2 -d matricula -c '\dt'
-```
-
-`06` a `10` compõem o Marco 2 e são rodados depois, na mesma ordem numérica.
-
 ## Conectando no pgAdmin
 
 1. Abra http://localhost:8080 e entre com `admin@iesb.br` / `admin`.
@@ -71,27 +53,59 @@ docker compose exec postgres psql -U bd2 -d matricula -c '\dt'
    | Username | `bd2` |
    | Password | `bd2` (marque **Save password**) |
 
-5. Clique em **Save**. As tabelas ficam em:
+5. Clique em **Save**.
 
-   ```
-   Servers → matricula (bd2) → Databases → matricula → Schemas → public → Tables
-   ```
+**Host é `postgres`, não `localhost`.** O pgAdmin roda em outro contêiner; para ele, `localhost` é o próprio pgAdmin. Os contêineres se enxergam pelo nome do serviço no `docker-compose.yml`, que é `postgres`.
 
-**Host é `postgres`, não `localhost`.** O pgAdmin roda dentro do próprio contêiner, e para ele `localhost` é o contêiner do pgAdmin. Os contêineres se enxergam pelo nome do serviço no `docker-compose.yml`, que é `postgres`. Para conectar de fora do Docker (DBeaver, VS Code, `psql` local), aí sim use `localhost:5432`.
+## Rodando os scripts SQL no pgAdmin
 
-**Não aparece nenhuma tabela?**
+Os scripts são executados **manualmente, um por vez, no Query Tool**, na ordem da numeração:
 
-- O banco sobe vazio: rode os scripts da seção anterior.
-- O pgAdmin não recarrega sozinho: botão direito em **Tables → Refresh**.
-- Confira se abriu o banco `matricula`, e não o `postgres`.
+| Ordem | Arquivo | O que faz |
+|---|---|---|
+| 1 | [sql/01_ddl.sql](sql/01_ddl.sql) | extensão, tipos, domínios e as 16 tabelas com constraints |
+| 2 | [sql/04_carga.sql](sql/04_carga.sql) | carga de dados |
+| 3 | [sql/05_consultas.sql](sql/05_consultas.sql) | as 10 consultas do Marco 1 |
+
+`06` a `10` compõem o Marco 2 e seguem a mesma ordem.
+
+### Passo a passo
+
+1. Na árvore, expanda **Servers → matricula (bd2) → Databases** e clique no banco **`matricula`** (não no `postgres`).
+2. Abra o Query Tool: menu **Tools → Query Tool** (ou botão direito em `matricula` → **Query Tool**).
+3. Abra o arquivo do script no editor (VS Code, por exemplo), copie todo o conteúdo (**Ctrl+A**, **Ctrl+C**) e cole no Query Tool (**Ctrl+V**).
+4. Execute o script inteiro com **F5** (ou o botão ▶ **Execute script**).
+5. Confira a aba **Messages** antes de passar para o próximo script.
+6. Para o script seguinte, limpe o editor (**Ctrl+A**, **Delete**) e repita a partir do passo 3.
+
+### O que conferir em cada script
+
+| Script | Resultado esperado na aba **Messages** |
+|---|---|
+| `01_ddl.sql` | `Query returned successfully`, sem erro |
+| `04_carga.sql` | `NOTICE: carga ok: 120 alunos, 83 turmas, 3320 matrículas` |
+| `05_consultas.sql` | ver abaixo |
+
+Depois do `01_ddl.sql`, clique com o botão direito em **Schemas → public → Tables → Refresh**: as 16 tabelas `tb_*` aparecem.
+
+**Consultas:** o Query Tool mostra em **Data Output** só o resultado do último comando executado. Para ver cada consulta, cole o arquivo inteiro, **selecione só a consulta desejada** (do comentário `Q1 — ...` até o `;`) e aperte **F5**: apenas o trecho selecionado é executado.
+
+### Se der erro
+
+- **`type ... already exists` / `relation ... already exists`:** o script já foi rodado nesse banco. Recomece do zero (seção abaixo) e rode de novo, na ordem.
+- **`relation "tb_..." does not exist`:** algum script anterior não foi rodado, ou foi rodado no banco `postgres` em vez de `matricula`.
+- **Tabelas não aparecem na árvore:** o pgAdmin não recarrega sozinho; botão direito em **Tables → Refresh**.
 
 ## Recomeçando do zero
 
+Apaga o banco e sobe vazio de novo (no terminal, na pasta do projeto):
+
 ```bash
-docker compose down -v   # apaga os dados
-docker compose up -d     # sobe limpo de novo
-# rodar os scripts sql/ novamente
+docker compose down -v
+docker compose up -d
 ```
+
+Depois, rode os scripts no pgAdmin outra vez, a partir do `01_ddl.sql`. O cadastro do servidor no pgAdmin também é apagado e precisa ser refeito.
 
 ## Estrutura do repositório
 

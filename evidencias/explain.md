@@ -1,6 +1,6 @@
 # Evidências de EXPLAIN (ANALYZE, BUFFERS)
 
-Uma seção por índice criado em `sql/07_indices.sql`, sempre no formato antes/depois.
+Uma seção por índice criado em `sql/05_indices.sql`, sempre no formato antes/depois.
 
 ## Modelo de seção
 

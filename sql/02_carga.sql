@@ -1,5 +1,5 @@
 -- =====================================================================
--- 04_carga.sql
+-- 02_carga.sql
 -- Carga de dados: grade real de Ciência da Computação (2023/1) e de
 -- Engenharia de Computação, mais alunos, matrículas e histórico gerados
 -- com generate_series (mínimo: 100 alunos, 6 turmas, 300 matrículas).
@@ -7,7 +7,7 @@
 -- Banco de Dados II (CCO072) — IESB 2026/2
 -- =====================================================================
 --
--- Pré-condição: 01, 02 e 03 já rodados, banco vazio.
+-- Pré-condição: 01_ddl.sql já rodado, banco vazio.
 --
 -- Decisões da carga:
 --
@@ -30,12 +30,12 @@
 --    total do módulo, a carga foi distribuída para fechar esse total.
 --
 -- Ordem (respeita as FKs):
---   campus, periodo_letivo, professor, sala
---   curso, curriculo, feriado, disciplina
---   curriculo_disciplina, pre_requisito
---   turma, turma_horario
---   aluno
---   matricula, historico, log_matricula
+--   tb_campus, tb_periodo_letivo, tb_professor, tb_sala
+--   tb_curso, tb_curriculo, tb_feriado, tb_disciplina
+--   tb_curriculo_disciplina, tb_pre_requisito
+--   tb_turma, tb_turma_horario
+--   tb_aluno
+--   tb_matricula, tb_historico, tb_log_matricula
 
 BEGIN;
 
@@ -46,7 +46,7 @@ BEGIN;
 -- Dois campi. Os cursos ficam assim: Ciência da Computação no Campus Sul e
 -- Engenharia de Computação no Campus Ceilândia.
 
-INSERT INTO campus (nome_campus, cidade_campus) VALUES
+INSERT INTO tb_campus (nome_campus, cidade_campus) VALUES
     ('Campus Sul (Edson Machado)',        'Brasília'),
     ('Campus Ceilândia (Liliane Barbosa)', 'Brasília');
 
@@ -57,7 +57,7 @@ INSERT INTO campus (nome_campus, cidade_campus) VALUES
 -- Quatro semestres, um por módulo cursado. 2026/2 é o semestre corrente.
 -- Intervalos de data usados pelas consultas de calendário e pelos feriados.
 
-INSERT INTO periodo_letivo
+INSERT INTO tb_periodo_letivo
     (ano_periodo_letivo, semestre_periodo_letivo,
      data_inicio_periodo_letivo, data_fim_periodo_letivo) VALUES
     (2025, 1, '2025-02-03', '2025-06-27'),
@@ -73,7 +73,7 @@ INSERT INTO periodo_letivo
 -- domínio iesb.edu.br. titulacao_professor é varchar livre, por definição do
 -- modelo.
 
-INSERT INTO professor
+INSERT INTO tb_professor
     (matricula_professor, nome_professor, email_professor, titulacao_professor) VALUES
     ('PRF0001', 'Helena Prado Siqueira',     'helena.siqueira@iesb.edu.br',   'Doutor'),
     ('PRF0002', 'Marcos Vinícius Teles',     'marcos.teles@iesb.edu.br',      'Mestre'),
@@ -98,7 +98,7 @@ INSERT INTO professor
 -- O mesmo código pode existir em campi diferentes (uq_sala_campus_codigo).
 -- Laboratórios e auditório ficam em blocos próprios.
 
-INSERT INTO sala (id_campus, codigo_sala, capacidade_sala, tipo_sala)
+INSERT INTO tb_sala (id_campus, codigo_sala, capacidade_sala, tipo_sala)
 SELECT c.id_campus, v.codigo, v.capacidade, v.tipo::tipo_sala_t
 FROM (VALUES
     -- Campus Sul: bloco J (salas), bloco K (laboratórios), bloco G (auditório)
@@ -129,7 +129,7 @@ FROM (VALUES
     ('Campus Ceilândia (Liliane Barbosa)', 'EB1', 45, 'laboratorio'),
     ('Campus Ceilândia (Liliane Barbosa)', 'FA1', 120, 'auditorio')
 ) AS v(campus, codigo, capacidade, tipo)
-JOIN campus c ON c.nome_campus = v.campus;
+JOIN tb_campus c ON c.nome_campus = v.campus;
 
 -- ============================================================
 -- CURSO
@@ -142,13 +142,13 @@ JOIN campus c ON c.nome_campus = v.campus;
 --   ECO: soma das cargas horárias da matriz curricular (3.790 h). A matriz
 --        não informa o total; este é o somatório das disciplinas.
 
-INSERT INTO curso (codigo_curso, nome_curso, grau_curso, ch_total_curso, id_campus)
+INSERT INTO tb_curso (codigo_curso, nome_curso, grau_curso, ch_total_curso, id_campus)
 SELECT v.codigo, v.nome, v.grau, v.ch_total, c.id_campus
 FROM (VALUES
     ('CCO', 'Ciência da Computação',     'Bacharelado', 3400, 'Campus Sul (Edson Machado)'),
     ('ECO', 'Engenharia de Computação',  'Bacharelado', 3790, 'Campus Ceilândia (Liliane Barbosa)')
 ) AS v(codigo, nome, grau, ch_total, campus)
-JOIN campus c ON c.nome_campus = v.campus;
+JOIN tb_campus c ON c.nome_campus = v.campus;
 
 -- ============================================================
 -- CURRICULO
@@ -158,9 +158,9 @@ JOIN campus c ON c.nome_campus = v.campus;
 -- traz ano, então usa-se 2023 também. Novos currículos nascem ativos
 -- (DEFAULT true).
 
-INSERT INTO curriculo (id_curso, ano_vigencia_curriculo)
+INSERT INTO tb_curriculo (id_curso, ano_vigencia_curriculo)
 SELECT id_curso, 2023
-FROM curso
+FROM tb_curso
 WHERE codigo_curso IN ('CCO', 'ECO');
 
 -- ============================================================
@@ -172,7 +172,7 @@ WHERE codigo_curso IN ('CCO', 'ECO');
 -- em campi diferentes é permitida; a duplicata de um nacional não seria
 -- (UNIQUE NULLS NOT DISTINCT em uq_feriado_data_campus).
 
-INSERT INTO feriado (data_feriado, descricao_feriado, id_campus) VALUES
+INSERT INTO tb_feriado (data_feriado, descricao_feriado, id_campus) VALUES
     ('2025-04-18', 'Sexta-feira Santa',           NULL),
     ('2025-04-21', 'Tiradentes',                  NULL),
     ('2025-05-01', 'Dia do Trabalho',             NULL),
@@ -194,10 +194,10 @@ INSERT INTO feriado (data_feriado, descricao_feriado, id_campus) VALUES
     ('2026-11-20', 'Dia da Consciência Negra',    NULL),
     ('2026-12-25', 'Natal',                       NULL);
 
-INSERT INTO feriado (data_feriado, descricao_feriado, id_campus)
+INSERT INTO tb_feriado (data_feriado, descricao_feriado, id_campus)
 SELECT d.data_feriado, 'Dia do Evangélico (DF)', c.id_campus
 FROM (VALUES ('2025-11-30'::date), ('2026-11-30'::date)) AS d(data_feriado)
-CROSS JOIN campus c;
+CROSS JOIN tb_campus c;
 
 -- ============================================================
 -- DISCIPLINA
@@ -223,7 +223,7 @@ CROSS JOIN campus c;
 --
 -- Código: mnemônico de até 10 caracteres.
 
-INSERT INTO disciplina
+INSERT INTO tb_disciplina
     (codigo_disciplina, nome_disciplina, ch_teorica_disciplina, ch_pratica_disciplina)
 VALUES
     -- Comuns a CCO e ECO (25)
@@ -340,13 +340,13 @@ VALUES
 -- Um código com erro de digitação não some em silêncio: o subselect devolve
 -- NULL e a coluna id_disciplina (NOT NULL) rejeita a linha.
 
-INSERT INTO curriculo_disciplina
+INSERT INTO tb_curriculo_disciplina
     (id_curriculo, id_disciplina, periodo_curriculo_disciplina, tipo_curriculo_disciplina)
 SELECT
     (SELECT k.id_curriculo
-       FROM curriculo k JOIN curso c ON c.id_curso = k.id_curso
+       FROM tb_curriculo k JOIN tb_curso c ON c.id_curso = k.id_curso
       WHERE c.codigo_curso = m.curso),
-    (SELECT d.id_disciplina FROM disciplina d WHERE d.codigo_disciplina = u.codigo),
+    (SELECT d.id_disciplina FROM tb_disciplina d WHERE d.codigo_disciplina = u.codigo),
     m.periodo,
     (CASE u.codigo
          WHEN 'ELV' THEN 'eletiva'
@@ -476,7 +476,7 @@ INSERT INTO pre_requisito_fonte (disciplina, requisito, vinculo, curso) VALUES
     ('SLI',  'ASI',  'pre_requisito', NULL),
     ('TIC',  'SLI',  'pre_requisito', NULL);
 
-INSERT INTO pre_requisito
+INSERT INTO tb_pre_requisito
     (id_curriculo, id_disciplina, id_disciplina_requisito, vinculo_pre_requisito)
 SELECT
     cd.id_curriculo,
@@ -484,14 +484,14 @@ SELECT
     rq.id_disciplina,
     f.vinculo
 FROM pre_requisito_fonte f
-JOIN disciplina d ON d.codigo_disciplina = f.disciplina
-JOIN disciplina r ON r.codigo_disciplina = f.requisito
-JOIN curriculo_disciplina cd ON cd.id_disciplina = d.id_disciplina
-JOIN curriculo_disciplina rq
+JOIN tb_disciplina d ON d.codigo_disciplina = f.disciplina
+JOIN tb_disciplina r ON r.codigo_disciplina = f.requisito
+JOIN tb_curriculo_disciplina cd ON cd.id_disciplina = d.id_disciplina
+JOIN tb_curriculo_disciplina rq
   ON rq.id_curriculo  = cd.id_curriculo
  AND rq.id_disciplina = r.id_disciplina
-JOIN curriculo cu ON cu.id_curriculo = cd.id_curriculo
-JOIN curso c      ON c.id_curso      = cu.id_curso
+JOIN tb_curriculo cu ON cu.id_curriculo = cd.id_curriculo
+JOIN tb_curso c      ON c.id_curso      = cu.id_curso
 WHERE f.curso IS NULL OR f.curso = c.codigo_curso;
 
 -- Conferência: a ordem dos semestres envolve duas linhas de
@@ -509,11 +509,11 @@ DECLARE
     violacoes integer;
 BEGIN
     SELECT count(*) INTO violacoes
-    FROM pre_requisito p
-    JOIN curriculo_disciplina cd
+    FROM tb_pre_requisito p
+    JOIN tb_curriculo_disciplina cd
       ON cd.id_curriculo  = p.id_curriculo
      AND cd.id_disciplina = p.id_disciplina
-    JOIN curriculo_disciplina rq
+    JOIN tb_curriculo_disciplina rq
       ON rq.id_curriculo  = p.id_curriculo
      AND rq.id_disciplina = p.id_disciplina_requisito
     WHERE p.vinculo_pre_requisito = 'pre_requisito'
@@ -523,11 +523,11 @@ BEGIN
     END IF;
 
     SELECT count(*) INTO violacoes
-    FROM pre_requisito p
-    JOIN curriculo_disciplina cd
+    FROM tb_pre_requisito p
+    JOIN tb_curriculo_disciplina cd
       ON cd.id_curriculo  = p.id_curriculo
      AND cd.id_disciplina = p.id_disciplina
-    JOIN curriculo_disciplina rq
+    JOIN tb_curriculo_disciplina rq
       ON rq.id_curriculo  = p.id_curriculo
      AND rq.id_disciplina = p.id_disciplina_requisito
     WHERE p.vinculo_pre_requisito = 'co_requisito'
@@ -540,9 +540,9 @@ BEGIN
     FROM pre_requisito_fonte f
     WHERE NOT EXISTS (
         SELECT 1
-        FROM pre_requisito p
-        JOIN disciplina d ON d.id_disciplina = p.id_disciplina
-        JOIN disciplina r ON r.id_disciplina = p.id_disciplina_requisito
+        FROM tb_pre_requisito p
+        JOIN tb_disciplina d ON d.id_disciplina = p.id_disciplina
+        JOIN tb_disciplina r ON r.id_disciplina = p.id_disciplina_requisito
         WHERE d.codigo_disciplina = f.disciplina
           AND r.codigo_disciplina = f.requisito
     );
@@ -584,7 +584,7 @@ $$;
 --     Marco 2 disputa. COUNT(matricula) <= vagas_turma NÃO é constraint: é
 --     garantida por transação.
 
-INSERT INTO turma
+INSERT INTO tb_turma
     (codigo_turma, id_disciplina, id_periodo_letivo, id_professor, turno_turma, vagas_turma)
 SELECT
     format('%s%sM%s%s-%s',
@@ -600,18 +600,18 @@ FROM (VALUES
     ('CCO', 'N', 'noturno',  4),
     ('ECO', 'N', 'noturno',  6)
 ) AS co(curso, letra, turno, deslocamento)
-JOIN curso c ON c.codigo_curso = co.curso
-JOIN curriculo k ON k.id_curso = c.id_curso
+JOIN tb_curso c ON c.codigo_curso = co.curso
+JOIN tb_curriculo k ON k.id_curso = c.id_curso
 JOIN (SELECT id_curriculo, id_disciplina,
              periodo_curriculo_disciplina AS n
-        FROM curriculo_disciplina
+        FROM tb_curriculo_disciplina
        WHERE periodo_curriculo_disciplina <= 4) cd ON cd.id_curriculo = k.id_curriculo
-JOIN disciplina d ON d.id_disciplina = cd.id_disciplina
-JOIN periodo_letivo pl
+JOIN tb_disciplina d ON d.id_disciplina = cd.id_disciplina
+JOIN tb_periodo_letivo pl
   ON (pl.ano_periodo_letivo - 2025) * 2 + pl.semestre_periodo_letivo = cd.n
 JOIN (SELECT id_professor,
              row_number() OVER (ORDER BY matricula_professor) - 1 AS rn
-        FROM professor) pr
+        FROM tb_professor) pr
   ON pr.rn = (d.id_disciplina + co.deslocamento) % 12;
 
 -- ============================================================
@@ -620,9 +620,9 @@ JOIN (SELECT id_professor,
 
 -- Só as turmas de 2026/2 recebem horário: a grade dos semestres encerrados
 -- não é usada por nenhuma consulta. Turma sem horário é válida no modelo.
--- id_periodo_letivo vem da própria turma (a FK composta em 03 exige isso), e
--- o EXCLUDE usa essa coluna para liberar a mesma sala e faixa em outro
--- semestre.
+-- id_periodo_letivo vem da própria turma (a FK composta
+-- fk_turma_horario_turma exige isso), e o EXCLUDE usa essa coluna para
+-- liberar a mesma sala e faixa em outro semestre.
 --
 -- Faixas (semiabertas [), aula que termina às 09:10 não conflita com a que
 -- começa às 09:10):
@@ -638,9 +638,10 @@ JOIN (SELECT id_professor,
 -- Salas: cada coorte tem uma sala de aula fixa (sala comum do bloco) e usa o
 -- laboratório nas disciplinas com parte prática de 20 h ou mais. Os horários
 -- do matutino e do noturno não se cruzam, então a mesma sala serve aos dois
--- turnos. O EXCLUDE (03) garante, de qualquer forma, que não haja conflito.
+-- turnos. O EXCLUDE ex_turma_horario_sala_ocupada garante, de qualquer
+-- forma, que não haja conflito.
 
-INSERT INTO turma_horario
+INSERT INTO tb_turma_horario
     (id_turma, id_periodo_letivo, id_sala, dia_semana_turma_horario, faixa_turma_horario)
 SELECT
     t.id_turma,
@@ -657,9 +658,9 @@ FROM (
            d.ch_pratica_disciplina,
            row_number() OVER (PARTITION BY split_part(t.codigo_turma, '-', 1)
                               ORDER BY d.id_disciplina) - 1 AS j
-      FROM turma t
-      JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
-      JOIN disciplina d ON d.id_disciplina = t.id_disciplina
+      FROM tb_turma t
+      JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+      JOIN tb_disciplina d ON d.id_disciplina = t.id_disciplina
      WHERE pl.ano_periodo_letivo = 2026 AND pl.semestre_periodo_letivo = 2
 ) t
 CROSS JOIN generate_series(0, 1) AS k(k)
@@ -676,8 +677,8 @@ JOIN (
                  ELSE (ARRAY['20:40','22:30'])[i % 2 + 1] END)::time
       FROM generate_series(0, 11) AS i
 ) sl ON sl.turno = t.turno_turma AND sl.idx = 2 * t.j + k.k
-JOIN curso c ON c.codigo_curso = t.curso
-JOIN sala s
+JOIN tb_curso c ON c.codigo_curso = t.curso
+JOIN tb_sala s
   ON s.id_campus = c.id_campus
  AND s.codigo_sala = CASE
          WHEN t.ch_pratica_disciplina >= 20
@@ -694,23 +695,23 @@ DECLARE
     violacoes integer;
 BEGIN
     SELECT count(*) INTO violacoes
-    FROM turma_horario h1
-    JOIN turma t1 ON t1.id_turma = h1.id_turma
-    JOIN turma_horario h2
+    FROM tb_turma_horario h1
+    JOIN tb_turma t1 ON t1.id_turma = h1.id_turma
+    JOIN tb_turma_horario h2
       ON h2.id_turma_horario > h1.id_turma_horario
      AND h2.id_periodo_letivo = h1.id_periodo_letivo
      AND h2.dia_semana_turma_horario = h1.dia_semana_turma_horario
      AND h2.faixa_turma_horario && h1.faixa_turma_horario
-    JOIN turma t2 ON t2.id_turma = h2.id_turma
+    JOIN tb_turma t2 ON t2.id_turma = h2.id_turma
     WHERE t1.id_professor = t2.id_professor;
     IF violacoes > 0 THEN
         RAISE EXCEPTION 'carga: % choque(s) de horário de professor', violacoes;
     END IF;
 
     SELECT count(*) INTO violacoes
-    FROM turma_horario h
-    JOIN turma t ON t.id_turma = h.id_turma
-    JOIN sala s ON s.id_sala = h.id_sala
+    FROM tb_turma_horario h
+    JOIN tb_turma t ON t.id_turma = h.id_turma
+    JOIN tb_sala s ON s.id_sala = h.id_sala
     WHERE s.capacidade_sala < t.vagas_turma;
     IF violacoes > 0 THEN
         RAISE EXCEPTION 'carga: % horário(s) em sala menor que as vagas da turma', violacoes;
@@ -748,7 +749,7 @@ $$;
 -- id_curso e id_curriculo saem do mesmo currículo, o que satisfaz a FK
 -- composta fk_aluno_curriculo_curso (o currículo pertence ao curso do aluno).
 
-INSERT INTO aluno
+INSERT INTO tb_aluno
     (matricula_aluno, nome_aluno, cpf_aluno, email_aluno, nascimento_aluno,
      id_curso, id_curriculo, ingresso_aluno)
 WITH nomes AS (
@@ -784,8 +785,8 @@ FROM generate_series(1, 120) AS g(i)
 CROSS JOIN nomes n
 JOIN (VALUES (0, 'CCO'), (1, 'CCO'), (2, 'ECO')) AS co(coorte, curso)
   ON co.coorte = (g.i - 1) / 40
-JOIN curso c ON c.codigo_curso = co.curso
-JOIN curriculo k ON k.id_curso = c.id_curso
+JOIN tb_curso c ON c.codigo_curso = co.curso
+JOIN tb_curriculo k ON k.id_curso = c.id_curso
 ORDER BY g.i;
 
 -- ============================================================
@@ -814,7 +815,7 @@ ORDER BY g.i;
 -- ck_matricula_data_nao_futura.
 -- UNIQUE (id_aluno, id_turma) é satisfeita: cada par aparece uma vez.
 
-INSERT INTO matricula (id_aluno, id_turma, data_matricula, status_matricula)
+INSERT INTO tb_matricula (id_aluno, id_turma, data_matricula, status_matricula)
 SELECT
     a.id_aluno,
     t.id_turma,
@@ -825,11 +826,11 @@ SELECT
          WHEN (a.id_aluno * 31 + t.id_turma * 17) % 97 = 0 THEN 'trancada'
          ELSE 'concluida'
      END)::status_mat_t
-FROM aluno a
+FROM tb_aluno a
 JOIN (VALUES (0, 'CCODM'), (1, 'CCONM'), (2, 'ECONM')) AS co(coorte, prefixo)
   ON co.coorte = (a.id_aluno - 1) / 40
-JOIN turma t ON left(t.codigo_turma, 5) = co.prefixo
-JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+JOIN tb_turma t ON left(t.codigo_turma, 5) = co.prefixo
+JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
 ORDER BY a.id_aluno, pl.ano_periodo_letivo, pl.semestre_periodo_letivo, t.id_turma;
 
 -- ============================================================
@@ -851,14 +852,14 @@ ORDER BY a.id_aluno, pl.ano_periodo_letivo, pl.semestre_periodo_letivo, t.id_tur
 -- matrículas concluídas é calculada logo abaixo, a partir da média que o
 -- próprio banco gerou. Assim a regra de cálculo não é duplicada aqui.
 
-INSERT INTO historico
+INSERT INTO tb_historico
     (id_matricula, nota_a1_historico, nota_a2_historico, nota_p3_historico,
      frequencia_historico, situacao_historico)
 WITH base AS (
     SELECT m.id_matricula,
            m.status_matricula AS st,
            (m.id_aluno * 7919 + m.id_turma * 104729) % 1000003 AS h
-      FROM matricula m
+      FROM tb_matricula m
 ),
 notas AS (
     SELECT id_matricula, st, h,
@@ -886,14 +887,14 @@ ORDER BY id_matricula;
 -- Situação das matrículas concluídas: aprovado com média >= 6 e frequência
 -- >= 75; reprovação por nota, por falta ou pelas duas (reprovado_nota_falta).
 
-UPDATE historico h
+UPDATE tb_historico h
    SET situacao_historico = (CASE
            WHEN h.media_final_historico >= 6 AND h.frequencia_historico >= 75 THEN 'aprovado'
            WHEN h.media_final_historico <  6 AND h.frequencia_historico >= 75 THEN 'reprovado_nota'
            WHEN h.media_final_historico >= 6                                  THEN 'reprovado_falta'
            ELSE 'reprovado_nota_falta'
        END)::situacao_t
-  FROM matricula m
+  FROM tb_matricula m
  WHERE m.id_matricula = h.id_matricula
    AND m.status_matricula = 'concluida';
 
@@ -909,7 +910,7 @@ UPDATE historico h
 -- não existe mais. log_matricula não tem FK em id_matricula, e é por isso que
 -- o log consegue guardar a remoção que a auditoria precisa registrar.
 
-INSERT INTO log_matricula
+INSERT INTO tb_log_matricula
     (id_matricula, acao_log_matricula, ocorrido_em_log_matricula, detalhe_log_matricula)
 SELECT id_matricula, acao, quando, detalhe
 FROM (
@@ -918,28 +919,28 @@ FROM (
            m.data_matricula AS quando,
            jsonb_build_object('id_aluno', m.id_aluno, 'id_turma', m.id_turma,
                               'status', 'ativa', 'origem', 'carga') AS detalhe
-      FROM matricula m
+      FROM tb_matricula m
     UNION ALL
     SELECT m.id_matricula,
            'trancada',
            ((pl.data_inicio_periodo_letivo + 30) + time '10:00') AT TIME ZONE 'America/Sao_Paulo',
            jsonb_build_object('status_anterior', 'ativa', 'status_novo', 'trancada',
                               'origem', 'carga')
-      FROM matricula m
-      JOIN turma t ON t.id_turma = m.id_turma
-      JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+      FROM tb_matricula m
+      JOIN tb_turma t ON t.id_turma = m.id_turma
+      JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
      WHERE m.status_matricula = 'trancada'
 ) ev
 ORDER BY id_matricula, quando;
 
-INSERT INTO log_matricula
+INSERT INTO tb_log_matricula
     (id_matricula, acao_log_matricula, ocorrido_em_log_matricula, detalhe_log_matricula)
 SELECT max(id_matricula) + 1000,
        'removida',
        TIMESTAMPTZ '2026-03-10 14:00:00-03',
        jsonb_build_object('motivo', 'matrícula duplicada removida pela secretaria',
                           'origem', 'carga')
-  FROM matricula;
+  FROM tb_matricula;
 
 -- ============================================================
 -- CONFERÊNCIA FINAL
@@ -959,9 +960,9 @@ DECLARE
     n_matriculas integer;
     violacoes    integer;
 BEGIN
-    SELECT count(*) INTO n_alunos     FROM aluno;
-    SELECT count(*) INTO n_turmas     FROM turma;
-    SELECT count(*) INTO n_matriculas FROM matricula;
+    SELECT count(*) INTO n_alunos     FROM tb_aluno;
+    SELECT count(*) INTO n_turmas     FROM tb_turma;
+    SELECT count(*) INTO n_matriculas FROM tb_matricula;
 
     IF n_alunos < 100 OR n_turmas < 6 OR n_matriculas < 300 THEN
         RAISE EXCEPTION 'carga abaixo do mínimo do enunciado: % alunos, % turmas, % matrículas',
@@ -970,8 +971,8 @@ BEGIN
 
     -- 1:1 entre matrícula e histórico
     SELECT count(*) INTO violacoes
-      FROM matricula m
-     WHERE NOT EXISTS (SELECT 1 FROM historico h WHERE h.id_matricula = m.id_matricula);
+      FROM tb_matricula m
+     WHERE NOT EXISTS (SELECT 1 FROM tb_historico h WHERE h.id_matricula = m.id_matricula);
     IF violacoes > 0 THEN
         RAISE EXCEPTION 'carga: % matrícula(s) sem histórico', violacoes;
     END IF;
@@ -979,8 +980,8 @@ BEGIN
     -- nenhuma turma passa das vagas (ativas + concluídas ocupam vaga)
     SELECT count(*) INTO violacoes
       FROM (SELECT t.id_turma
-              FROM turma t
-              JOIN matricula m ON m.id_turma = t.id_turma
+              FROM tb_turma t
+              JOIN tb_matricula m ON m.id_turma = t.id_turma
                AND m.status_matricula IN ('ativa', 'concluida')
              GROUP BY t.id_turma, t.vagas_turma
             HAVING count(*) > t.vagas_turma) x;
@@ -990,10 +991,10 @@ BEGIN
 
     -- cada turma de 2026/2 tem exatamente 1 vaga livre (cenário da última vaga)
     SELECT count(*) INTO violacoes
-      FROM turma t
-      JOIN periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+      FROM tb_turma t
+      JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
      WHERE pl.ano_periodo_letivo = 2026 AND pl.semestre_periodo_letivo = 2
-       AND t.vagas_turma - (SELECT count(*) FROM matricula m
+       AND t.vagas_turma - (SELECT count(*) FROM tb_matricula m
                              WHERE m.id_turma = t.id_turma
                                AND m.status_matricula = 'ativa') <> 1;
     IF violacoes > 0 THEN
@@ -1002,8 +1003,8 @@ BEGIN
 
     -- situação coerente com o estado da matrícula
     SELECT count(*) INTO violacoes
-      FROM historico h
-      JOIN matricula m ON m.id_matricula = h.id_matricula
+      FROM tb_historico h
+      JOIN tb_matricula m ON m.id_matricula = h.id_matricula
      WHERE (m.status_matricula = 'concluida'
             AND (h.media_final_historico IS NULL
                  OR h.situacao_historico IN ('cursando', 'trancada')))

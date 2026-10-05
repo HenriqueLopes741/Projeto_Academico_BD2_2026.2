@@ -1,5 +1,5 @@
 -- =====================================================================
--- 10_backup_restore.sql
+-- 08_backup_restore.sql
 -- Procedimento de backup e restauração, documentado e reproduzível
 -- Frente: Administração e Operação
 -- Banco de Dados II (CCO072) — IESB 2026/2

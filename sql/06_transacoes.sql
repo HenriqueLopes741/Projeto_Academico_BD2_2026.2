@@ -1,5 +1,5 @@
 -- =====================================================================
--- 08_transacoes.sql
+-- 06_transacoes.sql
 -- Anomalia de concorrência (disputa pela última vaga) + 2 correções
 -- Frente: Transações e Concorrência
 -- Banco de Dados II (CCO072) — IESB 2026/2

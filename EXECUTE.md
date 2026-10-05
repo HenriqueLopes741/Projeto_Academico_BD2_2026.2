@@ -50,7 +50,7 @@ Os arquivos SQL ficam na pasta `./sql` do projeto e devem ser enviados ao Postgr
 Use este padrão:
 
 ```bash
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_tipos_dominios.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
 ```
 
 Esse comando envia o conteúdo do arquivo local para o PostgreSQL dentro do container. Isso funciona corretamente porque o arquivo existe no computador do usuário e não dentro do contêiner.
@@ -60,7 +60,7 @@ Esse comando envia o conteúdo do arquivo local para o PostgreSQL dentro do cont
 Se preferir usar o nome do container em vez do nome do serviço do Compose, a forma correta é:
 
 ```bash
-docker exec -i bd2_aluno_postgres psql -U bd2 -d matricula < ./sql/01_tipos_dominios.sql
+docker exec -i bd2_aluno_postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
 ```
 
 ### Execução em sequência
@@ -68,9 +68,7 @@ docker exec -i bd2_aluno_postgres psql -U bd2 -d matricula < ./sql/01_tipos_domi
 Os scripts devem ser executados na ordem correta para construir o banco do zero:
 
 ```bash
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_tipos_dominios.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_tabelas.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_constraints.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_carga.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_consultas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_views.sql
@@ -82,9 +80,7 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/10_backup_resto
 
 ### Ordem de execução
 
-1. `01_tipos_dominios.sql` — cria extensões, tipos e domínios;
-2. `02_tabelas.sql` — cria as tabelas;
-3. `03_constraints.sql` — aplica as constraints e regras;
+1. `01_ddl.sql` — cria extensão, tipos, domínios e as tabelas com todas as constraints;
 4. `04_carga.sql` — insere os dados iniciais;
 5. `05_consultas.sql` — scripts de consultas;
 6. `06_views.sql` — cria as views;
@@ -93,7 +89,7 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/10_backup_resto
 9. `09_seguranca_rls.sql` — segurança e RLS;
 10. `10_backup_restore.sql` — backup e restauração.
 
-> Atenção: scripts de criação, como `01_tipos_dominios.sql`, não devem ser executados novamente em um banco que já possui os objetos criados. Isso pode gerar erros como `type already exists` ou `relation already exists`.
+> Atenção: scripts de criação, como `01_ddl.sql`, não devem ser executados novamente em um banco que já possui os objetos criados. Isso pode gerar erros como `type already exists` ou `relation already exists`.
 
 ## 3. Como começar do zero
 
@@ -107,9 +103,7 @@ docker compose up -d
 Depois, execute os scripts em ordem:
 
 ```bash
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_tipos_dominios.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_tabelas.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_constraints.sql
+docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_carga.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_consultas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_views.sql

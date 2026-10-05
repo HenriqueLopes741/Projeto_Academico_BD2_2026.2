@@ -11,7 +11,7 @@ Após feedback do professor em 24 de agosto sobre a importância de seguir as et
 
 Modelo lógico v3 do sistema (16 tabelas). O DDL em `sql/01` a `sql/03` segue exatamente os nomes deste diagrama.
 
-Diagrama: [modelo_logico_v3.drawio.pdf](modelo_logico_v3.drawio.pdf). A página 2 traz os tipos enumerados, domínios, `timerange`, colunas geradas e as decisões deliberadas; as definições estão em [sql/01_tipos_dominios.sql](sql/01_tipos_dominios.sql).
+Diagrama: [modelo_logico_v3.drawio.pdf](modelo_logico_v3.drawio.pdf). A página 2 traz os tipos enumerados, domínios, `timerange`, colunas geradas e as decisões deliberadas; as definições estão em [sql/01_ddl.sql](sql/01_ddl.sql) (Parte 1).
 
 A v3 corrige dois pontos da v2: `pre_requisito` passou a ser por currículo (`id_curriculo`), porque a mesma disciplina tem exigências diferentes em CCO e ECO, e `turma_horario` passou a guardar `id_periodo_letivo`, para o EXCLUDE de sala ocupada separar semestres.
 

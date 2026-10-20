@@ -10,3 +10,77 @@
 --   - Correção 1: bloqueio explícito (SELECT ... FOR UPDATE)
 --   - Correção 2: nível de isolamento (SERIALIZABLE ou similar)
 --   - Comparação: custo, contenção, necessidade de retentativa
+
+-- =====================================================================
+-- ESCOPO DESTE SCRIPT
+-- =====================================================================
+--
+-- Este script deverá demonstrar a disputa concorrente pela última vaga de
+-- uma turma, comparar a execução sem proteção com duas estratégias de
+-- correção e registrar o comportamento esperado de cada abordagem.
+--
+-- O cenário preparado em sql/02_carga.sql deixa uma vaga livre nas turmas
+-- de 2026/2. A ocupação deve considerar os status definidos pela regra do
+-- projeto, e cada tentativa deve usar um aluno ainda não matriculado na turma.
+--
+-- Dependências principais:
+--   - tb_turma: turma e quantidade de vagas (vagas_turma);
+--   - tb_matricula: matrículas que ocupam vagas e vínculo aluno-turma;
+--   - dois alunos distintos disponíveis para o cenário concorrente.
+--
+-- Não é necessária uma view para demonstrar a regra: a consulta de vagas pode
+-- ser feita diretamente sobre as tabelas existentes. Este esboço não contém
+-- ainda comandos executáveis; os trechos abaixo indicam apenas o escopo.
+
+-- ---------------------------------------------------------------------
+-- 1. Reprodução da anomalia — duas sessões concorrentes
+-- ---------------------------------------------------------------------
+-- Sessão A e Sessão B consultam a disponibilidade antes de inserir.
+-- O roteiro deve manter as transações abertas e intercalar os comandos para
+-- demonstrar que ambas podem observar a última vaga e tentar ocupá-la.
+--
+-- Sessão A:
+-- BEGIN;
+-- SELECT ...; -- consultar ocupação e vagas restantes
+-- INSERT ...; -- matricular o primeiro aluno
+--
+-- Sessão B:
+-- BEGIN;
+-- SELECT ...; -- consultar ocupação antes da confirmação da Sessão A
+-- INSERT ...; -- matricular outro aluno na mesma turma
+--
+-- Finalizar/intercalar as sessões e conferir o total de matrículas da turma.
+
+-- ---------------------------------------------------------------------
+-- 2. Correção com bloqueio explícito
+-- ---------------------------------------------------------------------
+-- Bloquear a linha da turma antes de verificar as vagas e inserir a matrícula.
+-- A segunda sessão deve aguardar a liberação do bloqueio e então revalidar a
+-- disponibilidade antes de prosseguir.
+--
+-- BEGIN;
+-- SELECT ... FOR UPDATE; -- bloquear a turma
+-- SELECT ...;            -- verificar disponibilidade após obter o bloqueio
+-- INSERT ...;            -- inserir somente se houver vaga
+-- COMMIT;
+
+-- ---------------------------------------------------------------------
+-- 3. Correção com nível de isolamento SERIALIZABLE
+-- ---------------------------------------------------------------------
+-- Executar as tentativas concorrentes em SERIALIZABLE e observar se uma delas
+-- é abortada por conflito de serialização. Documentar a necessidade de repetir
+-- a transação inteira quando ocorrer SQLSTATE 40001.
+--
+-- BEGIN;
+-- SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- SELECT ...; -- consultar ocupação e vagas restantes
+-- INSERT ...; -- matricular se houver vaga
+-- COMMIT;
+
+-- ---------------------------------------------------------------------
+-- 4. Comparação e conferência
+-- ---------------------------------------------------------------------
+-- Registrar, para cada cenário, o resultado das sessões, a contenção, o custo
+-- operacional e a necessidade de retentativa. Conferir que a capacidade da
+-- turma não foi ultrapassada e que o cenário de teste não deixa dados
+-- permanentes no banco.

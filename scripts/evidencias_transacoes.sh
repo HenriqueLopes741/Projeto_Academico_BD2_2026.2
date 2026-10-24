@@ -29,7 +29,6 @@ DATA=$(date '+%d/%m/%Y %H:%M')
 
 # 3. Tabelas em Markdown. Cada linha é montada no SQL com format(), então a
 #    saída já sai com barras verticais, que é o que o Markdown renderiza.
-#    \pset tuples_only e \pset format unaligned tiram cabeçalhos e alinhamento.
 TABELAS=$("${PSQL[@]}" <<'SQL'
 \pset quiet on
 \pset tuples_only on
@@ -59,6 +58,20 @@ SELECT line FROM (
        AND f.marco = 'fim'
 ) t ORDER BY k, o;
 \echo
+\echo ### Espera da transação B no FOR UPDATE
+\echo
+SELECT line FROM (
+    SELECT 0 AS k, 0 AS o, '| Medida | Tempo (ms) |' AS line
+    UNION ALL SELECT 0, 1, '|---|---|'
+    UNION ALL SELECT 1, 0,
+           format('| Do envio de B até o COMMIT de A | %s |',
+                  round((extract(epoch FROM a.instante - b.instante) * 1000)::numeric, 1))
+      FROM tx_teste.marcas b
+      JOIN tx_teste.marcas a
+        ON a.cenario = '2-FOR UPDATE' AND a.marco = 'a_commit'
+     WHERE b.cenario = '2-FOR UPDATE' AND b.marco = 'b_envia'
+) t ORDER BY k, o;
+\echo
 \echo ### Conferência final
 \echo
 SELECT line FROM (
@@ -72,8 +85,8 @@ SELECT line FROM (
 SQL
 )
 
-# 4. Monta o relatório. As variáveis entram já preenchidas; as crases são
-#    escapadas com \ para não serem interpretadas pelo shell.
+# 4. Relatório. As variáveis entram já preenchidas; as crases são escapadas
+#    com \ para não serem interpretadas pelo shell.
 cat > "$ARQ" <<EOF
 # Evidências: Transações e Concorrência
 
@@ -84,21 +97,69 @@ cat > "$ARQ" <<EOF
 
 ## Objetivo
 
-Mostrar a disputa pela última vaga de uma turma em três situações: sem controle,
+Mostrar a disputa pela última vaga de uma turma em três situações: sem bloqueio,
 com bloqueio explícito (\`FOR UPDATE\`) e com isolamento \`SERIALIZABLE\` e retentativa.
+Os dados abaixo são os da execução que gerou este arquivo.
 
 $TABELAS
 
-## Interpretação
+## A anomalia: write skew
 
-- **Sem proteção:** as duas transações leem a mesma ocupação antes de confirmar e
-  ambas inserem. Se o resultado mostra mais matrículas que vagas, a anomalia foi reproduzida.
-- **FOR UPDATE:** a segunda transação espera o bloqueio da primeira e revalida a vaga
-  antes de inserir. A duração do cenário inclui a pausa de 1 segundo do script
-  (\`pg_sleep\`), usada só para garantir que a segunda sessão alcance o bloqueio.
-- **SERIALIZABLE:** a segunda transação deve ser abortada com SQLSTATE 40001 ao
-  confirmar. A retentativa refaz a transação inteira e não insere, porque a turma
-  já está cheia.
+A regra do sistema é: o número de matrículas que ocupam vaga não pode passar de
+\`vagas_turma\`. No cenário 1, cada transação lê o mesmo conjunto de matrículas da
+turma (40 ocupadas), conclui que há vaga e grava uma linha nova. As duas linhas são
+diferentes (aluno A e aluno B), então nenhuma transação escreve sobre uma linha que a
+outra alterou. Não há conflito direto de escrita, e mesmo assim a regra é violada.
+
+Esse padrão tem nome: **write skew**. Duas transações leem um conjunto em comum,
+escrevem em registros disjuntos com base nessa leitura, e o resultado final viola uma
+restrição que cada uma, isoladamente, respeitava. A inserção da outra transação também
+muda o resultado da consulta, por isso o caso se aproxima do fenômeno de *phantom*.
+
+## Por que o REPEATABLE READ não resolve este caso
+
+No REPEATABLE READ, toda a transação usa o snapshot tirado na primeira consulta. A
+transação B não enxerga a inserção de A, porque ela ainda não foi confirmada, e continua
+contando 40 ocupadas. O PostgreSQL só aborta por conflito de escrita quando as duas
+transações alteram a mesma linha. Aqui as linhas são diferentes, então nenhuma aborta,
+e o overbooking acontece do mesmo jeito. Por isso esse caso exige SERIALIZABLE, que
+rastreia dependências de leitura e escrita entre as transações.
+
+## Por que o FOR UPDATE depende de READ COMMITTED
+
+No cenário 2, A bloqueia a linha da turma. B tenta o mesmo bloqueio e espera. Quando A
+confirma, B obtém o bloqueio, mas ainda precisa decidir se há vaga, e essa decisão
+depende da leitura feita depois da espera.
+
+Em READ COMMITTED, cada comando recebe um snapshot novo. O INSERT de B roda depois do
+COMMIT de A, então enxerga a matrícula de A, conta 41 e não insere. Essa é a condição
+que faz o bloqueio funcionar.
+
+Em REPEATABLE READ, o snapshot da transação de B foi tirado antes da espera. Mesmo
+depois de obter o bloqueio, o INSERT de B continuaria contando 40 ocupadas e inseriria,
+gerando overbooking. O bloqueio só serializa o acesso; quem garante que a leitura
+reflete o estado atual é o snapshot por comando do READ COMMITTED. O problema é
+silencioso: o SELECT ... FOR UPDATE não dá erro nenhum nesse caso.
+
+## Medição da espera
+
+A espera de B é medida com \`clock_timestamp()\`: do instante em que B é enviada até o
+instante em que A confirma e libera o bloqueio. Essa espera é a contenção real do
+cenário 2. A duração total do cenário é pequena, porque o script não usa mais
+\`pg_sleep\` fixo: um laço verifica que B está bloqueada antes de A confirmar.
+
+## Permissões
+
+\`SELECT ... FOR UPDATE\` exige o privilégio \`UPDATE\` na tabela \`tb_turma\`. O script
+roda como \`bd2\`, dono do banco, então funciona aqui. O role usado pela aplicação de
+matrículas precisa desse privilégio, concedido com \`GRANT UPDATE ON tb_turma\`.
+
+## Cenário 3: SERIALIZABLE
+
+O PostgreSQL acompanha as leituras e escritas de transações SERIALIZABLE. Quando detecta
+uma estrutura perigosa, que é exatamente o padrão do write skew, aborta uma das
+transações com SQLSTATE 40001. A aplicação deve repetir a transação inteira. Na nova
+tentativa, a turma já está cheia e nenhuma linha é inserida.
 
 ## Saída completa da execução
 

@@ -77,6 +77,13 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.s
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_restore.sql
 ```
+Depois de rodar o `06_transacoes.sql`, gere o relatório com os dados da execução:
+
+```bash
+bash scripts/evidencias_transacoes.sh
+```
+
+O resultado fica em `evidencias/transacoes.md`.
 
 ### Ordem de execução
 

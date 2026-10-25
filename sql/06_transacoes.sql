@@ -97,6 +97,13 @@ CREATE TABLE tx_teste.marcas (
     instante timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
+-- PIDs das duas sessões. pid_a é o script; pid_b é a conexão dblink. A
+-- verificação de bloqueio usa pid_b, para provar que B (e não outra sessão)
+-- está esperando o bloqueio de A.
+CREATE TABLE tx_teste.sessoes AS
+SELECT pg_backend_pid() AS pid_a,
+       (SELECT t.pid FROM dblink('conn_b', 'SELECT pg_backend_pid()') AS t(pid int)) AS pid_b;
+
 -- Limpeza de execuções anteriores.
 DELETE FROM tb_matricula
  WHERE id_turma = (SELECT id_turma FROM tx_teste.cfg)
@@ -216,27 +223,42 @@ SELECT dblink_send_query('conn_b', format(
     'SELECT vagas_turma FROM tb_turma WHERE id_turma = %s FOR UPDATE',
     (SELECT id_turma FROM tx_teste.cfg)));
 
--- Espera até B estar bloqueada pelo FOR UPDATE de A (limite de ~2 s).
--- Se B não bloquear, o teste não está válido e o script para aqui.
+-- Espera até que o PostgreSQL confirme que B está bloqueada por A (limite de
+-- ~2 s). dblink_is_busy não basta: ele vira 1 assim que a consulta é enviada,
+-- mesmo antes de B chegar ao bloqueio. pg_blocking_pids indica quem bloqueia
+-- cada sessão. Se B não ficar bloqueada, o teste não é válido e o script para.
 DO $$
 DECLARE
-    i int := 0;
+    i         int     := 0;
+    bloqueada boolean := false;
 BEGIN
-    WHILE dblink_is_busy('conn_b') = 0 LOOP
+    WHILE NOT bloqueada LOOP
         i := i + 1;
         IF i > 200 THEN
             RAISE EXCEPTION 'B não ficou bloqueada pelo FOR UPDATE de A';
         END IF;
-        PERFORM pg_sleep(0.01);
+
+        SELECT EXISTS (
+            SELECT 1
+              FROM pg_stat_activity p
+              JOIN tx_teste.sessoes s ON p.pid = s.pid_b
+             WHERE p.datname = current_database()
+               AND p.wait_event_type = 'Lock'
+               AND pg_blocking_pids(p.pid) @> ARRAY[s.pid_a]
+        ) INTO bloqueada;
+
+        IF NOT bloqueada THEN
+            PERFORM pg_sleep(0.01);
+        END IF;
     END LOOP;
 END
 $$;
 
-SELECT pid, wait_event_type, wait_event
-  FROM pg_stat_activity
- WHERE datname = current_database()
-   AND wait_event_type = 'Lock';
--- Esperado: uma linha, a sessão B em Lock (transactionid)
+SELECT p.pid AS pid_b, p.wait_event_type, p.wait_event,
+       pg_blocking_pids(p.pid) AS bloqueada_por
+  FROM pg_stat_activity p
+  JOIN tx_teste.sessoes s ON p.pid = s.pid_b;
+-- Esperado: uma linha, pid_b em Lock (transactionid), bloqueada_por = {pid_a}
 
 INSERT INTO tx_teste.marcas (cenario, marco) VALUES ('2-FOR UPDATE', 'a_commit');
 COMMIT;

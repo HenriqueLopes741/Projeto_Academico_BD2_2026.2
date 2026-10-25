@@ -2,7 +2,7 @@
 
 **Frente:** Transações e Concorrência · Banco de Dados II (CCO072) · IESB 2026/2
 **Script:** `sql/06_transacoes.sql`
-**Gerado em:** 24/10/2026 12:36
+**Gerado em:** 25/10/2026 09:19
 **PostgreSQL:** 17.11 (Docker, banco `matricula`)
 
 ## Objetivo
@@ -11,7 +11,6 @@ Mostrar a disputa pela última vaga de uma turma em três situações: sem bloqu
 com bloqueio explícito (`FOR UPDATE`) e com isolamento `SERIALIZABLE` e retentativa.
 Os dados abaixo são os da execução que gerou este arquivo.
 
-Output format is unaligned.
 ### Resultado por cenário
 
 | Cenário | Passo | Resultado |
@@ -26,15 +25,25 @@ Output format is unaligned.
 
 | Cenário | Duração (ms) |
 |---|---|
-| 1-sem protecao | 5.0 |
-| 2-FOR UPDATE | 4.1 |
-| 3-SERIALIZABLE | 4.5 |
+| 1-sem protecao | 4.3 |
+| 2-FOR UPDATE | 5.8 |
+| 3-SERIALIZABLE | 4.3 |
 
 ### Espera da transação B no FOR UPDATE
 
 | Medida | Tempo (ms) |
 |---|---|
-| Do envio de B até o COMMIT de A | 1.2 |
+| Do envio de B até o COMMIT de A | 2.5 |
+
+### Comparação entre os cenários
+
+| Cenário | Resultado | Contenção | Custo (ms) | Retentativa |
+|---|---|---|---|---|
+| 1. Sem proteção | matriculas 42 para vagas 41 | nenhuma | 4.3 | não |
+| 2. FOR UPDATE | matriculas 41 para vagas 41 | B espera o bloqueio de A | 5.8 | não |
+| 3. SERIALIZABLE | matriculas 41 para vagas 41 | aborto de B no COMMIT (40001) | 4.3 | sim: 1 retentativa(s) (2 tentativas no total) |
+
+*O custo do cenário 2 inclui a espera de B, medida na tabela de espera acima.*
 
 ### Conferência final
 
@@ -124,15 +133,17 @@ SET
  SET
 (1 row)
 
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table tx_teste.cfg
 drop cascades to table tx_teste.resultados
 drop cascades to table tx_teste.marcas
+drop cascades to table tx_teste.sessoes
 DROP SCHEMA
 CREATE SCHEMA
 SELECT 1
 CREATE TABLE
 CREATE TABLE
+SELECT 1
 DELETE 0
        passo       | vagas_turma | ocupadas | vagas_livres 
 -------------------+-------------+----------+--------------
@@ -140,8 +151,8 @@ DELETE 0
 (1 row)
 
 INSERT 0 1
-WARNING:  there is no transaction in progress
 ROLLBACK
+WARNING:  there is no transaction in progress
 BEGIN
             passo            | ocupadas 
 -----------------------------+----------
@@ -200,9 +211,9 @@ INSERT 0 1
 (1 row)
 
 DO
- pid | wait_event_type |  wait_event   
------+-----------------+---------------
- 461 | Lock            | transactionid
+ pid_b | wait_event_type |  wait_event   | bloqueada_por 
+-------+-----------------+---------------+---------------
+  1134 | Lock            | transactionid | {1133}
 (1 row)
 
 INSERT 0 1
@@ -236,8 +247,8 @@ INSERT 0 1
 INSERT 0 1
 DELETE 1
 INSERT 0 1
-WARNING:  there is no transaction in progress
 ROLLBACK
+WARNING:  there is no transaction in progress
 BEGIN
  ocupadas_a 
 ------------
@@ -282,14 +293,14 @@ DELETE 1
 
     cenario     | duracao_ms 
 ----------------+------------
- 1-sem protecao |        5.0
- 2-FOR UPDATE   |        4.1
- 3-SERIALIZABLE |        4.5
+ 1-sem protecao |        4.3
+ 2-FOR UPDATE   |        5.8
+ 3-SERIALIZABLE |        4.3
 (3 rows)
 
  espera_b_ms 
 -------------
-         1.2
+         2.5
 (1 row)
 
  matriculas_de_teste_restantes 

@@ -9,7 +9,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 ARQ="evidencias/transacoes.md"
-PSQL=(docker compose exec -T postgres psql -U bd2 -d matricula)
+PSQL=(docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bd2 -d matricula)
 mkdir -p evidencias
 
 # 1. Executa o cenário (mesmo comando do EXECUTE.md) e guarda a saída bruta.
@@ -25,12 +25,16 @@ fi
 
 # 2. Metadados da execução.
 VERSAO=$("${PSQL[@]}" -At -c "SELECT split_part(version(), ' ', 2)")
+if [ $? -ne 0 ]; then
+    echo "Falha ao consultar a versão do PostgreSQL. Relatório não gerado."
+    exit 1
+fi
 DATA=$(date '+%d/%m/%Y %H:%M')
 
 # 3. Tabelas em Markdown. Cada linha é montada no SQL com format(), então a
 #    saída já sai com barras verticais, que é o que o Markdown renderiza.
 TABELAS=$("${PSQL[@]}" <<'SQL'
-\pset quiet on
+\set QUIET on
 \pset tuples_only on
 \pset format unaligned
 
@@ -72,6 +76,43 @@ SELECT line FROM (
      WHERE b.cenario = '2-FOR UPDATE' AND b.marco = 'b_envia'
 ) t ORDER BY k, o;
 \echo
+\echo ### Comparação entre os cenários
+\echo
+WITH dur AS (
+    SELECT i.cenario,
+           round((extract(epoch FROM f.instante - i.instante) * 1000)::numeric, 1) AS ms
+      FROM tx_teste.marcas i
+      JOIN tx_teste.marcas f
+        ON f.cenario = i.cenario
+       AND i.marco = 'inicio'
+       AND f.marco = 'fim'
+)
+SELECT line FROM (
+    SELECT 0 AS k, 0 AS o, '| Cenário | Resultado | Contenção | Custo (ms) | Retentativa |' AS line
+    UNION ALL SELECT 0, 1, '|---|---|---|---|---|'
+    UNION ALL SELECT 1, 1,
+           format('| 1. Sem proteção | %s | nenhuma | %s | não |',
+                  (SELECT resultado FROM tx_teste.resultados
+                    WHERE cenario = '1-sem protecao' AND passo = 'overbooking'),
+                  (SELECT ms FROM dur WHERE cenario = '1-sem protecao'))
+    UNION ALL SELECT 1, 2,
+           format('| 2. FOR UPDATE | %s | B espera o bloqueio de A | %s | não |',
+                  (SELECT resultado FROM tx_teste.resultados
+                    WHERE cenario = '2-FOR UPDATE' AND passo = 'B espera A e nao insere'),
+                  (SELECT ms FROM dur WHERE cenario = '2-FOR UPDATE'))
+    UNION ALL SELECT 1, 3,
+           format('| 3. SERIALIZABLE | %s | aborto de B no COMMIT (40001) | %s | sim: %s retentativa(s) (%s tentativas no total) |',
+                  (SELECT resultado FROM tx_teste.resultados
+                    WHERE cenario = '3-SERIALIZABLE' AND passo = 'resultado final'),
+                  (SELECT ms FROM dur WHERE cenario = '3-SERIALIZABLE'),
+                  (SELECT COUNT(*) - 1 FROM tx_teste.resultados
+                    WHERE cenario = '3-SERIALIZABLE' AND passo LIKE 'B tentativa%'),
+                  (SELECT COUNT(*) FROM tx_teste.resultados
+                    WHERE cenario = '3-SERIALIZABLE' AND passo LIKE 'B tentativa%'))
+) t ORDER BY k, o;
+\echo
+\echo *O custo do cenário 2 inclui a espera de B, medida na tabela de espera acima.*
+\echo
 \echo ### Conferência final
 \echo
 SELECT line FROM (
@@ -84,6 +125,10 @@ SELECT line FROM (
 ) t ORDER BY k, o;
 SQL
 )
+if [ $? -ne 0 ]; then
+    echo "Falha ao montar as tabelas do relatório. Relatório não gerado."
+    exit 1
+fi
 
 # 4. Relatório. As variáveis entram já preenchidas; as crases são escapadas
 #    com \ para não serem interpretadas pelo shell.

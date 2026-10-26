@@ -38,20 +38,37 @@
 -- Uma linha por TURMA (a Q1 devolve uma por horário). LEFT JOIN LATERAL:
 -- turma sem horário continua aparecendo, com horarios NULL.
 
-CREATE VIEW vw_vagas AS
-SELECT pl.ano_periodo_letivo 					AS ano,
-		pl.semestre_periodo_letivo  			AS semestre,
-		t.codigo_turma,
-		t.vagas_turma,
-		COUNT (m.id_matricula)					AS ocupadas,
-		t.vagas_turma - COUNT(m.id_matricula) 	AS vagas_livres
+CREATE OR REPLACE VIEW vw_oferta_turma AS
+SELECT
+    t.id_turma,
+    t.codigo_turma,
+    pl.ano_periodo_letivo                                   AS ano,
+    pl.semestre_periodo_letivo                              AS semestre,
+    pl.ano_periodo_letivo || '/' || pl.semestre_periodo_letivo AS periodo,
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    d.ch_total_disciplina,
+    t.turno_turma,
+    p.nome_professor,
+    t.vagas_turma,
+    h.horarios
 FROM tb_turma t
+JOIN tb_disciplina     d  ON d.id_disciplina      = t.id_disciplina
 JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
-LEFT JOIN tb_matricula m
-	ON m.id_turma = t.id_turma
-	AND m.status_matricula IN	('ativa', 'concluida')
-GROUP BY t.id_turma, pl.id_periodo_letivo;
+JOIN tb_professor      p  ON p.id_professor       = t.id_professor
+LEFT JOIN LATERAL (
+    SELECT string_agg(
+               (ARRAY['seg','ter','qua','qui','sex','sáb','dom'])[th.dia_semana_turma_horario]
+               || ' ' || left(lower(th.faixa_turma_horario)::text, 5)
+               || '-'  || left(upper(th.faixa_turma_horario)::text, 5)
+               || ' (' || s.codigo_sala || ')',
+               '; ' ORDER BY th.dia_semana_turma_horario, lower(th.faixa_turma_horario)
+           ) AS horarios
+      FROM tb_turma_horario th
+      JOIN tb_sala s ON s.id_sala = th.id_sala
+     WHERE th.id_turma = t.id_turma
+) h ON true;
 
-
--- vw_ofertas:
+COMMENT ON VIEW vw_oferta_turma IS
+    'Oferta de turmas: disciplina, professor, período e horários (dia, faixa, sala). Turma sem horário aparece com horarios NULL.';
 

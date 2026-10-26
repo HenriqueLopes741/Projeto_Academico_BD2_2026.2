@@ -72,7 +72,7 @@ LEFT JOIN LATERAL (
 COMMENT ON VIEW vw_oferta_turma IS
     'Oferta de turmas: disciplina, professor, período e horários (dia, faixa, sala). Turma sem horário aparece com horarios NULL.';
 
-- =====================================================================
+-- =====================================================================
 -- VIEW 2 — VAGAS POR TURMA
 -- =====================================================================
 -- Ocupação calculada na hora (não materializada): é o dado que a disputa pela
@@ -202,3 +202,92 @@ CREATE UNIQUE INDEX uq_mv_indicadores_periodo_disciplina
 
 COMMENT ON MATERIALIZED VIEW mv_indicadores_disciplina IS
     'Indicadores por período e disciplina (aprovação, médias, frequência). Atualizar com REFRESH ... CONCURRENTLY; ver política em 04_views.sql.';
+
+-- ---------------------------------------------------------------------
+-- POLÍTICA DE ATUALIZAÇÃO DA MATERIALIZED VIEW
+-- ---------------------------------------------------------------------
+-- Escolha: REFRESH MATERIALIZED VIEW CONCURRENTLY, executado de forma
+-- agendada e sob demanda (manual), NÃO por trigger.
+--
+--   Quando executar:
+--     1. após o lançamento de notas/fechamento de um período letivo;
+--     2. diariamente, fora do horário de pico (ex.: 03:00), via cron do
+--        sistema operacional ou pg_cron, se a extensão estiver disponível;
+--     3. manualmente pela secretaria/coordenação antes de reuniões.
+--
+--   Por que não trigger:
+--     - o REFRESH recalcula a visão inteira; disparado a cada INSERT/UPDATE
+--       em matrícula ou histórico, penalizaria exatamente o caminho quente da
+--       matrícula (a disputa pela última vaga de 06_transacoes.sql);
+--     - indicadores de aprovação e média só mudam de verdade quando as notas
+--       são consolidadas, não a cada matrícula. Defasagem de horas é aceitável
+--       para um painel gerencial.
+--
+--   Por que CONCURRENTLY:
+--     - não bloqueia os SELECTs da coordenação durante o refresh (exige o
+--       índice único acima); custo: um pouco mais lento que o refresh simples.
+--       Não pode rodar dentro de bloco BEGIN/COMMIT.
+--
+--   Dado que precisa estar em tempo real (vagas) NÃO usa a materialized view:
+--   vem de vw_vagas_turma, calculada na consulta.
+--
+--   Comando (psql / pgAdmin):
+--     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_indicadores_disciplina;
+--
+--   Exemplo de agendamento no host (crontab):
+--     0 3 * * * docker compose -f /caminho/docker-compose.yml exec -T postgres \
+--       psql -U bd2 -d matricula -c "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_indicadores_disciplina;"
+
+-- =====================================================================
+-- CONFERÊNCIA
+-- =====================================================================
+-- Para o script aqui se algo estiver incoerente com a carga.
+
+DO $$
+DECLARE
+    n_turmas  integer;
+    n_vagas   integer;
+    n_oferta  integer;
+    violacoes integer;
+BEGIN
+    SELECT count(*) INTO n_turmas FROM tb_turma;
+    SELECT count(*) INTO n_vagas  FROM vw_vagas_turma;
+    SELECT count(*) INTO n_oferta FROM vw_oferta_turma;
+
+    -- uma linha por turma nas duas views (os joins não duplicam nem perdem turma)
+    IF n_vagas <> n_turmas OR n_oferta <> n_turmas THEN
+        RAISE EXCEPTION 'views: % turmas, % em vw_vagas_turma, % em vw_oferta_turma',
+            n_turmas, n_vagas, n_oferta;
+    END IF;
+
+    -- cenário da última vaga: toda turma de 2026/2 com exatamente 1 vaga livre
+    SELECT count(*) INTO violacoes
+      FROM vw_vagas_turma
+     WHERE periodo = '2026/2' AND vagas_livres <> 1;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'vw_vagas_turma: % turma(s) de 2026/2 sem exatamente 1 vaga livre', violacoes;
+    END IF;
+
+    -- nenhuma turma acima da capacidade
+    SELECT count(*) INTO violacoes FROM vw_vagas_turma WHERE vagas_livres < 0;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'vw_vagas_turma: % turma(s) com vagas excedidas', violacoes;
+    END IF;
+
+    -- a view de histórico tem uma linha por matrícula
+    SELECT count(*) INTO violacoes
+      FROM (SELECT (SELECT count(*) FROM vw_historico_aluno) AS v,
+                   (SELECT count(*) FROM tb_matricula)       AS m) x
+     WHERE x.v <> x.m;
+    IF violacoes > 0 THEN
+        RAISE EXCEPTION 'vw_historico_aluno: contagem diferente de tb_matricula';
+    END IF;
+
+    -- a materialized view foi populada
+    IF NOT EXISTS (SELECT 1 FROM mv_indicadores_disciplina) THEN
+        RAISE EXCEPTION 'mv_indicadores_disciplina vazia após a criação';
+    END IF;
+
+    RAISE NOTICE 'views ok: % turmas, histórico e indicadores conferidos', n_turmas;
+END
+$$;

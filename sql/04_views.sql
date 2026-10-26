@@ -72,3 +72,40 @@ LEFT JOIN LATERAL (
 COMMENT ON VIEW vw_oferta_turma IS
     'Oferta de turmas: disciplina, professor, período e horários (dia, faixa, sala). Turma sem horário aparece com horarios NULL.';
 
+- =====================================================================
+-- VIEW 2 — VAGAS POR TURMA
+-- =====================================================================
+-- Ocupação calculada na hora (não materializada): é o dado que a disputa pela
+-- última vaga (06_transacoes.sql) precisa ver atualizado. LEFT JOIN para a
+-- turma sem nenhuma matrícula aparecer com 0 ocupadas.
+-- O filtro de status fica no ON: no WHERE, o LEFT JOIN viraria INNER.
+ 
+CREATE OR REPLACE VIEW vw_vagas_turma AS
+SELECT
+    t.id_turma,
+    t.codigo_turma,
+    pl.ano_periodo_letivo || '/' || pl.semestre_periodo_letivo AS periodo,
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    t.vagas_turma,
+    COUNT(m.id_matricula)                          AS vagas_ocupadas,
+    t.vagas_turma - COUNT(m.id_matricula)          AS vagas_livres,
+    ROUND(100.0 * COUNT(m.id_matricula) / t.vagas_turma, 1) AS ocupacao_pct,
+    CASE
+        WHEN COUNT(m.id_matricula) >  t.vagas_turma THEN 'excedida'   -- nunca deveria ocorrer
+        WHEN COUNT(m.id_matricula) =  t.vagas_turma THEN 'lotada'
+        WHEN COUNT(m.id_matricula) =  t.vagas_turma - 1 THEN 'ultima vaga'
+        ELSE 'com vagas'
+    END                                            AS situacao_vagas
+FROM tb_turma t
+JOIN tb_disciplina     d  ON d.id_disciplina      = t.id_disciplina
+JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+LEFT JOIN tb_matricula m
+       ON m.id_turma         = t.id_turma
+      AND m.status_matricula IN ('ativa', 'concluida')
+GROUP BY t.id_turma, t.codigo_turma, t.vagas_turma,
+         pl.ano_periodo_letivo, pl.semestre_periodo_letivo,
+         d.codigo_disciplina, d.nome_disciplina;
+ 
+COMMENT ON VIEW vw_vagas_turma IS
+    'Vagas por turma. Ocupam vaga as matrículas ativa e concluida; trancada e cancelada liberam. Calculada em tempo real.';

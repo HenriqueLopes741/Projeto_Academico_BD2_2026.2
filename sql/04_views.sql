@@ -4,12 +4,40 @@
 -- Frente: Administração e Operação
 -- Banco de Dados II (CCO072) — IESB 2026/2
 -- =====================================================================
+--
+-- Pré-condição: 01_ddl.sql e 02_carga.sql já rodados.
+-- Roda ANTES de 07_seguranca_rls.sql (que dá os GRANTs sobre estes objetos).
+--
+-- O QUE É UMA VIEW (e por que usar)
+--   View = consulta com nome. Não guarda dados: a cada SELECT o banco
+--   reexecuta a consulta sobre as tabelas. Serve para (1) dar um nome à
+--   consulta que todo mundo repete (oferta, vagas) e (2) ser a "janela" que
+--   expomos a um papel sem abrir as tabelas por trás (ver 07).
+--
+-- O QUE É UMA MATERIALIZED VIEW
+--   Mesma consulta, mas o resultado é GRAVADO em disco. Ler é rápido
+--   (é como ler uma tabela); o preço é que o dado envelhece até alguém
+--   rodar REFRESH. Vale a pena quando a consulta é cara e o dado muda
+--   pouco — é o caso de indicadores acadêmicos.
+--
+-- DUAS DECISÕES DE PROJETO (defender na arguição)
+--   1. "Ocupa vaga" = matrícula 'ativa' ou 'concluida'. Trancada e
+--      cancelada liberam a vaga. É a mesma regra da conferência de
+--      02_carga.sql. Em 2026/2 só existem 'ativa', então a Q2 (que conta só
+--      'ativa') e vw_vagas dão o mesmo resultado. O 06_transacoes.sql tem de
+--      usar a MESMA regra.
+--   2. vw_historico_aluno é security_invoker: roda com os privilégios (e a
+--      RLS) de QUEM CONSULTA, não de quem criou a view. Sem isso, a view
+--      (criada pelo dono) enxergaria tudo e furaria a RLS do 07.
+--      As outras duas views só mostram dados públicos/agregados e rodam
+--      com os direitos do dono (padrão).
+ 
+-- ---------------------------------------------------------------------
+-- 1. vw_oferta — oferta de turmas por período, com os horários numa linha
+-- ---------------------------------------------------------------------
+-- Uma linha por TURMA (a Q1 devolve uma por horário). LEFT JOIN LATERAL:
+-- turma sem horário continua aparecendo, com horarios NULL.
 
--- vw_vagas: uma linha por turma, com ano e semestre para filtrar,
--- vagas ocupadas e vagas livres.
--- Ocupam vaga as matrículas 'ativa' e 'concluida'; 'trancada' e 'cancelada'
--- liberam. 'concluida' é necessária porque nas turmas de semestres passados
--- não há mais matrículas ativas; em 2026/2 ela não altera o resultado.
 CREATE VIEW vw_vagas AS
 SELECT pl.ano_periodo_letivo 					AS ano,
 		pl.semestre_periodo_letivo  			AS semestre,
@@ -23,4 +51,7 @@ LEFT JOIN tb_matricula m
 	ON m.id_turma = t.id_turma
 	AND m.status_matricula IN	('ativa', 'concluida')
 GROUP BY t.id_turma, pl.id_periodo_letivo;
+
+
+-- vw_ofertas:
 

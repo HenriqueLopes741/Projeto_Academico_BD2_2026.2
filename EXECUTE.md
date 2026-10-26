@@ -73,10 +73,30 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_carga.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_consultas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_views.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_indices.sql
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bd2 -d matricula < ./sql/06b_regra_vagas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_restore.sql
 ```
+
+> Atenção ao `06b_regra_vagas.sql`: ele usa `-v ON_ERROR_STOP=1`. Ele começa validando se a carga já respeita as vagas, e só cria a trigger se essa validação passar. Sem essa flag, o psql continuaria depois do erro de validação e criaria a trigger mesmo assim.
+
+### Ordem de execução
+
+1. `01_ddl.sql`: cria extensão, tipos, domínios e as tabelas com todas as constraints;
+2. `02_carga.sql`: insere os dados iniciais;
+3. `03_consultas.sql`: scripts de consultas;
+4. `04_views.sql`: cria as views;
+5. `05_indices.sql`: cria índices;
+6. `06b_regra_vagas.sql`: valida a carga e cria a regra que impede matrícula acima das vagas;
+7. `06_transacoes.sql`: demonstração de concorrência (sem proteção, `FOR UPDATE` e `SERIALIZABLE`);
+8. `07_seguranca_rls.sql`: segurança e RLS;
+9. `08_backup_restore.sql`: backup e restauração.
+
+> Atenção: scripts de criação, como `01_ddl.sql` e `06b_regra_vagas.sql`, não devem ser executados novamente em um banco que já possui os objetos criados. Isso pode gerar erros como `type already exists` ou `relation already exists`.
+
+## 3. Gerar o relatório de evidências de transações
+
 Depois de rodar o `06_transacoes.sql`, gere o relatório com os dados da execução:
 
 ```bash
@@ -85,20 +105,9 @@ bash scripts/evidencias_transacoes.sh
 
 O resultado fica em `evidencias/transacoes.md`.
 
-### Ordem de execução
+Esse script roda o `06_transacoes.sql` de novo, então cada execução gera novos valores de tempo. Não é preciso rodar o `06` separadamente antes dele.
 
-1. `01_ddl.sql` — cria extensão, tipos, domínios e as tabelas com todas as constraints;
-2. `02_carga.sql` — insere os dados iniciais;
-3. `03_consultas.sql` — scripts de consultas;
-4. `04_views.sql` — cria as views;
-5. `05_indices.sql` — cria índices;
-6. `06_transacoes.sql` — scripts de transação;
-7. `07_seguranca_rls.sql` — segurança e RLS;
-8. `08_backup_restore.sql` — backup e restauração.
-
-> Atenção: scripts de criação, como `01_ddl.sql`, não devem ser executados novamente em um banco que já possui os objetos criados. Isso pode gerar erros como `type already exists` ou `relation already exists`.
-
-## 3. Como começar do zero
+## 4. Como começar do zero
 
 Se quiser reiniciar o banco completamente:
 
@@ -115,12 +124,19 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_carga.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_consultas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_views.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_indices.sql
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bd2 -d matricula < ./sql/06b_regra_vagas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_restore.sql
 ```
 
-## 4. Como iniciar um banco já existente
+Por fim, gere o relatório de evidências:
+
+```bash
+bash scripts/evidencias_transacoes.sh
+```
+
+## 5. Como iniciar um banco já existente
 
 Se o ambiente já foi configurado e você quer apenas continuar trabalhando:
 
@@ -130,7 +146,7 @@ docker compose up -d
 
 Nesse caso, não execute novamente os scripts de criação se eles já tiverem sido executados antes.
 
-## 5. Encerrar o ambiente
+## 6. Encerrar o ambiente
 
 Quando terminar de trabalhar, rode:
 
@@ -140,7 +156,7 @@ docker compose down
 
 Esse comando encerra os containers. Como existe um volume persistente, os dados do banco continuam salvos.
 
-## 6. Acesso ao pgAdmin
+## 7. Acesso ao pgAdmin
 
 Acesse o pgAdmin no navegador:
 
@@ -168,7 +184,7 @@ Em outras palavras:
 - `localhost:5432` = acesso do host (seu computador)
 - `postgres:5432` = acesso dentro da rede Docker (do pgAdmin, por exemplo)
 
-## 7. Observações finais
+## 8. Observações finais
 
 - O banco principal do projeto é `matricula`.
 - Certifique-se de executar os scripts na ordem correta.
@@ -176,4 +192,3 @@ Em outras palavras:
 - A forma correta é enviar o arquivo por entrada padrão (`< ./sql/...`) ou copiar o arquivo para dentro do contêiner somente se houver necessidade específica.
 
 ---
-

@@ -291,3 +291,31 @@ BEGIN
     RAISE NOTICE 'views ok: % turmas, histórico e indicadores conferidos', n_turmas;
 END
 $$;
+
+-- =====================================================================
+-- CONSULTAS DE EXEMPLO (para a demonstração)
+-- =====================================================================
+-- Oferta de uma turma:
+--   SELECT * FROM vw_oferta_turma WHERE codigo_turma = 'CCODM2B-BD2';
+--
+-- Turmas na última vaga em 2026/2:
+--   SELECT codigo_turma, vagas_turma, vagas_ocupadas, vagas_livres, situacao_vagas
+--     FROM vw_vagas_turma
+--    WHERE periodo = '2026/2' AND situacao_vagas = 'ultima vaga'
+--    ORDER BY codigo_turma;
+--
+-- Histórico de uma aluna:
+--   SELECT periodo, codigo_disciplina, media_final_historico, situacao_historico
+--     FROM vw_historico_aluno
+--    WHERE matricula_aluno = '202510007'
+--    ORDER BY periodo, codigo_disciplina;
+--
+-- Indicadores (disciplinas com pior aprovação nos períodos encerrados):
+--   SELECT periodo, codigo_disciplina, concluintes, taxa_aprovacao, media_geral
+--     FROM mv_indicadores_disciplina
+--    WHERE concluintes > 0
+--    ORDER BY taxa_aprovacao, periodo
+--    LIMIT 10;
+--
+-- Atualização:
+--   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_indicadores_disciplina;

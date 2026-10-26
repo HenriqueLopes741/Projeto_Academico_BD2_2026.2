@@ -147,4 +147,58 @@ JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo;
  
 COMMENT ON VIEW vw_historico_aluno IS
     'Histórico acadêmico por matrícula. security_invoker: respeita a RLS das tabelas-base (aluno só vê o próprio histórico).';
- 
+
+-- =====================================================================
+-- MATERIALIZED VIEW — INDICADORES POR PERÍODO E DISCIPLINA
+-- =====================================================================
+-- Agrega o histórico inteiro (3.320 matrículas hoje; cresce a cada semestre),
+-- o que é caro para recalcular a cada consulta do painel da coordenação.
+--
+--   matriculas_ocupantes: ativa + concluida (mesma regra de vaga)
+--   trancadas:            matrículas trancadas
+--   concluintes:          quem já tem resultado final (exclui cursando/trancada)
+--   taxa_aprovacao:       aprovados / concluintes (NULL se não há concluintes,
+--                         ex.: 2026/2, semestre em andamento)
+--   media_geral:          média das médias finais já calculadas (NULL ignorado)
+--   frequencia_media:     frequência média dos concluintes
+
+DROP MATERIALIZED VIEW IF EXISTS mv_indicadores_disciplina;
+
+CREATE MATERIALIZED VIEW mv_indicadores_disciplina AS
+SELECT
+    pl.id_periodo_letivo,
+    d.id_disciplina,
+    pl.ano_periodo_letivo || '/' || pl.semestre_periodo_letivo AS periodo,
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    COUNT(DISTINCT t.id_turma)                                              AS turmas,
+    COUNT(*) FILTER (WHERE m.status_matricula IN ('ativa', 'concluida'))   AS matriculas_ocupantes,
+    COUNT(*) FILTER (WHERE m.status_matricula = 'trancada')                AS trancadas,
+    COUNT(*) FILTER (WHERE h.situacao_historico NOT IN ('cursando', 'trancada'))   AS concluintes,
+    COUNT(*) FILTER (WHERE h.situacao_historico = 'aprovado')              AS aprovados,
+    COUNT(*) FILTER (WHERE h.situacao_historico IN ('reprovado_nota', 'reprovado_nota_falta'))  AS reprovados_nota,
+    COUNT(*) FILTER (WHERE h.situacao_historico IN ('reprovado_falta', 'reprovado_nota_falta')) AS reprovados_falta,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE h.situacao_historico = 'aprovado')
+          / NULLIF(COUNT(*) FILTER (WHERE h.situacao_historico NOT IN ('cursando', 'trancada')), 0), 1)
+                                                                            AS taxa_aprovacao,
+    ROUND(AVG(h.media_final_historico), 2)                                  AS media_geral,
+    ROUND(AVG(h.frequencia_historico)
+          FILTER (WHERE h.situacao_historico NOT IN ('cursando', 'trancada')), 1)
+                                                                            AS frequencia_media
+FROM tb_turma t
+JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo
+JOIN tb_disciplina     d  ON d.id_disciplina      = t.id_disciplina
+JOIN tb_matricula      m  ON m.id_turma           = t.id_turma
+JOIN tb_historico      h  ON h.id_matricula       = m.id_matricula
+GROUP BY pl.id_periodo_letivo, pl.ano_periodo_letivo, pl.semestre_periodo_letivo,
+         d.id_disciplina, d.codigo_disciplina, d.nome_disciplina
+WITH DATA;
+
+-- Índice único: obrigatório para REFRESH MATERIALIZED VIEW CONCURRENTLY
+-- (atualiza sem bloquear as leituras). Fica aqui, e não em 05_indices.sql,
+-- porque é requisito de funcionamento da política de atualização.
+CREATE UNIQUE INDEX uq_mv_indicadores_periodo_disciplina
+    ON mv_indicadores_disciplina (id_periodo_letivo, id_disciplina);
+
+COMMENT ON MATERIALIZED VIEW mv_indicadores_disciplina IS
+    'Indicadores por período e disciplina (aprovação, médias, frequência). Atualizar com REFRESH ... CONCURRENTLY; ver política em 04_views.sql.';

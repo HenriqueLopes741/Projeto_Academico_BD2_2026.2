@@ -109,3 +109,42 @@ GROUP BY t.id_turma, t.codigo_turma, t.vagas_turma,
  
 COMMENT ON VIEW vw_vagas_turma IS
     'Vagas por turma. Ocupam vaga as matrículas ativa e concluida; trancada e cancelada liberam. Calculada em tempo real.';
+
+ 
+-- =====================================================================
+-- VIEW 3 — HISTÓRICO DO ALUNO
+-- =====================================================================
+-- Uma linha por matrícula do aluno: período, disciplina, turma, notas, média,
+-- frequência e situação. Expõe id_aluno e matricula_aluno para as políticas de
+-- RLS e para filtro (WHERE matricula_aluno = '...').
+-- security_invoker: a RLS das tabelas-base vale para quem consulta a view.
+ 
+CREATE OR REPLACE VIEW vw_historico_aluno
+WITH (security_invoker = true) AS
+SELECT
+    a.id_aluno,
+    a.matricula_aluno,
+    a.nome_aluno,
+    c.codigo_curso,
+    pl.ano_periodo_letivo || '/' || pl.semestre_periodo_letivo AS periodo,
+    d.codigo_disciplina,
+    d.nome_disciplina,
+    t.codigo_turma,
+    m.status_matricula,
+    h.nota_a1_historico,
+    h.nota_a2_historico,
+    h.nota_p3_historico,
+    h.media_final_historico,
+    h.frequencia_historico,
+    h.situacao_historico
+FROM tb_historico h
+JOIN tb_matricula      m  ON m.id_matricula       = h.id_matricula
+JOIN tb_aluno          a  ON a.id_aluno           = m.id_aluno
+JOIN tb_curso          c  ON c.id_curso           = a.id_curso
+JOIN tb_turma          t  ON t.id_turma           = m.id_turma
+JOIN tb_disciplina     d  ON d.id_disciplina      = t.id_disciplina
+JOIN tb_periodo_letivo pl ON pl.id_periodo_letivo = t.id_periodo_letivo;
+ 
+COMMENT ON VIEW vw_historico_aluno IS
+    'Histórico acadêmico por matrícula. security_invoker: respeita a RLS das tabelas-base (aluno só vê o próprio histórico).';
+ 

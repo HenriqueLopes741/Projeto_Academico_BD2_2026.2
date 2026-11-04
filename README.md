@@ -133,7 +133,7 @@ Pré-requisito: scripts `01` a `03` já executados (ver acima). Rode `04` a `08`
 
 | Frente | Script SQL | O que demonstrar | Comando de apoio |
 |---|---|---|---|
-| Views | `04_views.sql` | `SELECT * FROM vw_vagas_turma WHERE vagas_livres = 1;` e `SELECT * FROM mv_indicadores_periodo;` | `SELECT fn_atualizar_indicadores();` |
+| Views | `04_views.sql` | `SELECT * FROM vw_vagas_turma LIMIT 5;` e `SELECT * FROM mv_indicadores_disciplina LIMIT 5;` | `REFRESH MATERIALIZED VIEW CONCURRENTLY mv_indicadores_disciplina;` |
 | Índices | `05_indices.sql` | `EXPLAIN (ANALYZE, BUFFERS)` antes/depois: [evidencias/explain.md](evidencias/explain.md) | `./scripts/explain_antes_depois.sh` (regenera as evidências) |
 | Transações | `06_transacoes.sql` | anomalia (42 > 41 vagas) e as duas correções | `./scripts/demo_concorrencia.sh todos` |
 | Segurança | `07_seguranca_rls.sql` | aluno só vê o próprio histórico | `SET ROLE aluno_202510007; SELECT count(*) FROM tb_historico;` → 28 (depois `RESET ROLE;`) |

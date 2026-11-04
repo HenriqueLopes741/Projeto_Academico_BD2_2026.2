@@ -135,3 +135,25 @@ CREATE POLICY pol_historico_proprio ON tb_historico
 
 -- tb_log_matricula não recebe RLS: o aluno simplesmente não tem GRANT nela.
 
+-- ---------------------------------------------------------------------
+-- 4. DEMONSTRAÇÃO (SET ROLE; volte com RESET ROLE)
+-- ---------------------------------------------------------------------
+-- A) O aluno 202510007 vê só o próprio histórico:
+--    SET ROLE aluno_202510007;
+--    SELECT count(*) FROM tb_historico;                                  -- 28
+--    SELECT DISTINCT matricula_aluno FROM vw_historico_aluno;            -- só 202510007
+--    SELECT count(*) FROM tb_aluno;                                      -- 1
+--    SELECT count(*) FROM tb_historico h JOIN tb_matricula m USING (id_matricula)
+--     JOIN tb_aluno a USING (id_aluno) WHERE a.matricula_aluno = '202510003';  -- 0 (tentou ver outro)
+--    SELECT * FROM tb_log_matricula;                                     -- ERRO: permission denied
+--    UPDATE tb_historico SET nota_a1_historico = 10;                     -- ERRO: permission denied
+--    RESET ROLE;
+-- B) Secretaria vê tudo, mas não apaga aluno:
+--    SET ROLE sec_demo;  SELECT count(*) FROM tb_historico;  DELETE FROM tb_aluno;  -- ERRO
+--    RESET ROLE;
+-- C) Coordenação lê tudo e só altera vagas/professor:
+--    SET ROLE coord_demo; UPDATE tb_turma SET vagas_turma = 41;           -- ok (coluna permitida)
+--    UPDATE tb_turma SET codigo_turma = 'X';                              -- ERRO (coluna não permitida)
+--    RESET ROLE;
+-- D) Por que security_invoker importa: SELECT count(*) FROM vw_historico_aluno
+--    como aluno_202510007 devolve 28, não 3.320.

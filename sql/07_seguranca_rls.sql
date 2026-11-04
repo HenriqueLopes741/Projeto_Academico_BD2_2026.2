@@ -83,8 +83,7 @@ GRANT USAGE ON SEQUENCE tb_matricula_id_matricula_seq,
                         tb_historico_id_historico_seq,
                         tb_aluno_id_aluno_seq,
                         tb_log_matricula_id_log_matricula_seq TO secretaria;
-GRANT EXECUTE ON FUNCTION fn_atualizar_indicadores() TO secretaria, coordenacao;
-GRANT SELECT ON mv_indicadores_periodo TO secretaria, coordenacao;   -- matview não tem RLS: nunca ao aluno
+GRANT SELECT ON mv_indicadores_disciplina TO secretaria, coordenacao;   -- matview não tem RLS: nunca ao aluno
 
 -- Coordenação: leitura de tudo, inclusive auditoria, e ajuste de oferta com
 -- privilégio por COLUNA (só vagas e professor da turma, nada mais).

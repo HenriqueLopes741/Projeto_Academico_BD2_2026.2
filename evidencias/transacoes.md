@@ -2,7 +2,7 @@
 
 **Frente:** Transações e Concorrência · Banco de Dados II (CCO072) · IESB 2026/2
 **Script:** `sql/06_transacoes.sql`
-**Gerado em:** 25/10/2026 09:19
+**Gerado em:** 26/10/2026 20:29
 **PostgreSQL:** 17.11 (Docker, banco `matricula`)
 
 ## Objetivo
@@ -25,23 +25,23 @@ Os dados abaixo são os da execução que gerou este arquivo.
 
 | Cenário | Duração (ms) |
 |---|---|
-| 1-sem protecao | 4.3 |
-| 2-FOR UPDATE | 5.8 |
-| 3-SERIALIZABLE | 4.3 |
+| 1-sem protecao | 4.9 |
+| 2-FOR UPDATE | 5.5 |
+| 3-SERIALIZABLE | 4.8 |
 
 ### Espera da transação B no FOR UPDATE
 
 | Medida | Tempo (ms) |
 |---|---|
-| Do envio de B até o COMMIT de A | 2.5 |
+| Do envio de B até o COMMIT de A | 1.7 |
 
 ### Comparação entre os cenários
 
 | Cenário | Resultado | Contenção | Custo (ms) | Retentativa |
 |---|---|---|---|---|
-| 1. Sem proteção | matriculas 42 para vagas 41 | nenhuma | 4.3 | não |
-| 2. FOR UPDATE | matriculas 41 para vagas 41 | B espera o bloqueio de A | 5.8 | não |
-| 3. SERIALIZABLE | matriculas 41 para vagas 41 | aborto de B no COMMIT (40001) | 4.3 | sim: 1 retentativa(s) (2 tentativas no total) |
+| 1. Sem proteção | matriculas 42 para vagas 41 | nenhuma | 4.9 | não |
+| 2. FOR UPDATE | matriculas 41 para vagas 41 | B espera o bloqueio de A | 5.5 | não |
+| 3. SERIALIZABLE | matriculas 41 para vagas 41 | aborto de B no COMMIT (40001) | 4.8 | sim: 1 retentativa(s) (2 tentativas no total) |
 
 *O custo do cenário 2 inclui a espera de B, medida na tabela de espera acima.*
 
@@ -50,6 +50,21 @@ Os dados abaixo são os da execução que gerou este arquivo.
 | Matrículas de teste restantes |
 |---|
 | 0 |
+
+## Estrutura dos cenários e regra de vagas
+
+O arquivo  instala no banco uma trigger ()
+que impede matrícula acima de . A demonstração usa essa regra da seguinte
+forma:
+
+| Cenário | Regra de vagas (trigger) | O que demonstra |
+|---|---|---|
+| 1. Sem proteção | desabilitada | a falha: overbooking |
+| 2.  | ativa | a regra funcionando, com espera e nova leitura |
+| 3.  | desabilitada | alternativa por isolamento, com retentativa |
+
+No cenário 3, a trigger fica desabilitada porque ela também usa  na turma,
+dentro do  de A. Com ela ativa, a espera de B bloquearia o próprio script.
 
 ## A anomalia: write skew
 
@@ -144,15 +159,17 @@ SELECT 1
 CREATE TABLE
 CREATE TABLE
 SELECT 1
+ALTER TABLE
 DELETE 0
        passo       | vagas_turma | ocupadas | vagas_livres 
 -------------------+-------------+----------+--------------
  0. estado inicial |          41 |       40 |            1
 (1 row)
 
+ALTER TABLE
 INSERT 0 1
-ROLLBACK
 WARNING:  there is no transaction in progress
+ROLLBACK
 BEGIN
             passo            | ocupadas 
 -----------------------------+----------
@@ -189,9 +206,10 @@ INSERT 0 1
 
 INSERT 0 1
 DELETE 2
+ALTER TABLE
 INSERT 0 1
-WARNING:  there is no transaction in progress
 ROLLBACK
+WARNING:  there is no transaction in progress
 BEGIN
  vagas_turma 
 -------------
@@ -213,7 +231,7 @@ INSERT 0 1
 DO
  pid_b | wait_event_type |  wait_event   | bloqueada_por 
 -------+-----------------+---------------+---------------
-  1134 | Lock            | transactionid | {1133}
+   153 | Lock            | transactionid | {152}
 (1 row)
 
 INSERT 0 1
@@ -246,6 +264,7 @@ INSERT 0 1
 
 INSERT 0 1
 DELETE 1
+ALTER TABLE
 INSERT 0 1
 ROLLBACK
 WARNING:  there is no transaction in progress
@@ -282,6 +301,7 @@ INSERT 0 1
 
 INSERT 0 1
 DELETE 1
+ALTER TABLE
     cenario     |          passo          |          resultado          
 ----------------+-------------------------+-----------------------------
  1-sem protecao | overbooking             | matriculas 42 para vagas 41
@@ -293,14 +313,14 @@ DELETE 1
 
     cenario     | duracao_ms 
 ----------------+------------
- 1-sem protecao |        4.3
- 2-FOR UPDATE   |        5.8
- 3-SERIALIZABLE |        4.3
+ 1-sem protecao |        4.9
+ 2-FOR UPDATE   |        5.5
+ 3-SERIALIZABLE |        4.8
 (3 rows)
 
  espera_b_ms 
 -------------
-         2.5
+         1.7
 (1 row)
 
  matriculas_de_teste_restantes 

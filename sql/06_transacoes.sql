@@ -12,8 +12,20 @@
 --   bash scripts/evidencias_transacoes.sh
 --
 -- PRÉ-CONDIÇÃO
---   01_ddl.sql e 02_carga.sql já executados. A carga deixa cada turma de
---   2026/2 com vagas_turma = 41 e 40 matrículas 'ativa' (1 vaga livre).
+--   01_ddl.sql, 02_carga.sql e 06b_regra_vagas.sql já executados. A carga
+--   deixa cada turma de 2026/2 com vagas_turma = 41 e 40 matrículas 'ativa'
+--   (1 vaga livre).
+--
+-- ESTRUTURA DOS CENÁRIOS
+--   O 06b cria a regra de vagas (trigger trg_verifica_vaga) no banco. O 06
+--   mostra como uma inserção se comporta com e sem proteção:
+--
+--   1. Sem proteção: trigger DESABILITADA. Demonstra a falha (42 para 41).
+--   2. FOR UPDATE: trigger ATIVA. A regra funciona com espera e nova leitura
+--      (41 para 41).
+--   3. SERIALIZABLE: trigger DESABILITADA. Alternativa sem regra, com
+--      retentativa (41 para 41). A trigger dá FOR UPDATE dentro do INSERT de
+--      A e bloquearia B, que o script espera antes de A confirmar.
 --
 -- COMO FUNCIONA
 --   A sessão A é o próprio script. A sessão B é uma segunda conexão aberta
@@ -104,6 +116,10 @@ CREATE TABLE tx_teste.sessoes AS
 SELECT pg_backend_pid() AS pid_a,
        (SELECT t.pid FROM dblink('conn_b', 'SELECT pg_backend_pid()') AS t(pid int)) AS pid_b;
 
+-- Garante que a regra de vagas (06b) esteja ativa no início. Se o 06b não
+-- foi executado, este comando falha e o script para, indicando o que falta.
+ALTER TABLE tb_matricula ENABLE TRIGGER trg_verifica_vaga;
+
 -- Limpeza de execuções anteriores.
 DELETE FROM tb_matricula
  WHERE id_turma = (SELECT id_turma FROM tx_teste.cfg)
@@ -131,6 +147,9 @@ SELECT '0. estado inicial' AS passo,
 -- B: BEGIN READ COMMITTED, consulta (vê 40), INSERT condicionado (vê 40 < 41)
 -- A: COMMIT
 -- B: COMMIT
+
+-- Cenário 1 precisa do banco SEM a regra de vagas, para reproduzir o overbooking.
+ALTER TABLE tb_matricula DISABLE TRIGGER trg_verifica_vaga;
 
 INSERT INTO tx_teste.marcas (cenario, marco) VALUES ('1-sem protecao', 'inicio');
 
@@ -202,6 +221,10 @@ DELETE FROM tb_matricula
 -- A espera de B é medida: instante do envio de B até o COMMIT de A.
 -- Nenhum pg_sleep: um loop verifica se B está bloqueada antes de A confirmar.
 -- Esperado: 41 para 41; B registra INSERT 0 0.
+
+-- Cenário 2 roda com a regra de vagas ativa: o FOR UPDATE da aplicação e o da
+-- trigger convivem na mesma transação de A.
+ALTER TABLE tb_matricula ENABLE TRIGGER trg_verifica_vaga;
 
 INSERT INTO tx_teste.marcas (cenario, marco) VALUES ('2-FOR UPDATE', 'inicio');
 
@@ -315,6 +338,10 @@ DELETE FROM tb_matricula
 -- B: COMMIT é abortado com SQLSTATE 40001. A transação de B é refeita
 --    (até 3 tentativas). Na nova tentativa a turma está cheia e nada é inserido.
 -- Esperado: 41 para 41; uma tentativa de B abortada com 40001.
+
+-- Cenário 3 roda sem a trigger: ela daria FOR UPDATE na turma dentro do INSERT
+-- de A e bloquearia B, que o script espera antes de A confirmar (travamento).
+ALTER TABLE tb_matricula DISABLE TRIGGER trg_verifica_vaga;
 
 INSERT INTO tx_teste.marcas (cenario, marco) VALUES ('3-SERIALIZABLE', 'inicio');
 
@@ -433,6 +460,8 @@ DELETE FROM tb_matricula
 -- ---------------------------------------------------------------------
 -- 4. Conferência
 -- ---------------------------------------------------------------------
+
+ALTER TABLE tb_matricula ENABLE TRIGGER trg_verifica_vaga;
 
 SELECT cenario, passo, resultado
   FROM tx_teste.resultados

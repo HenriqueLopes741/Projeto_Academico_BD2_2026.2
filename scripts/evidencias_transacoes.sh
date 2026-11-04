@@ -12,6 +12,14 @@ ARQ="evidencias/transacoes.md"
 PSQL=(docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bd2 -d matricula)
 mkdir -p evidencias
 
+# 0. O 06 depende da regra de vagas (06b). Confere antes de rodar.
+TEM_REGRA=$("${PSQL[@]}" -At -c "SELECT COUNT(*) FROM pg_trigger WHERE tgname = 'trg_verifica_vaga'")
+if [ $? -ne 0 ] || [ "$TEM_REGRA" != "1" ]; then
+    echo "A regra de vagas não está instalada no banco."
+    echo "Rode antes: sql/06b_regra_vagas.sql (ver EXECUTE.md, seção 2)."
+    exit 1
+fi
+
 # 1. Executa o cenário (mesmo comando do EXECUTE.md) e guarda a saída bruta.
 SAIDA=$("${PSQL[@]}" < ./sql/06_transacoes.sql 2>&1)
 if [ $? -ne 0 ]; then
@@ -147,6 +155,21 @@ com bloqueio explícito (\`FOR UPDATE\`) e com isolamento \`SERIALIZABLE\` e ret
 Os dados abaixo são os da execução que gerou este arquivo.
 
 $TABELAS
+
+## Estrutura dos cenários e regra de vagas
+
+O arquivo `sql/06b_regra_vagas.sql` instala no banco uma trigger (`trg_verifica_vaga`)
+que impede matrícula acima de `vagas_turma`. A demonstração usa essa regra da seguinte
+forma:
+
+| Cenário | Regra de vagas (trigger) | O que demonstra |
+|---|---|---|
+| 1. Sem proteção | desabilitada | a falha: overbooking |
+| 2. `FOR UPDATE` | ativa | a regra funcionando, com espera e nova leitura |
+| 3. `SERIALIZABLE` | desabilitada | alternativa por isolamento, com retentativa |
+
+No cenário 3, a trigger fica desabilitada porque ela também usa `FOR UPDATE` na turma,
+dentro do `INSERT` de A. Com ela ativa, a espera de B bloquearia o próprio script.
 
 ## A anomalia: write skew
 

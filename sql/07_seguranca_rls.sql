@@ -48,3 +48,46 @@ GRANT aluno       TO aluno_202510007, aluno_202510003;
 GRANT secretaria  TO sec_demo;
 GRANT coordenacao TO coord_demo;
 
+-- ---------------------------------------------------------------------
+-- 2. GRANT / REVOKE — mínimo privilégio
+-- Começa tirando tudo de PUBLIC (por padrão o schema public é aberto).
+-- ---------------------------------------------------------------------
+REVOKE ALL ON ALL TABLES    IN SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;   -- ninguém cria objeto no public
+GRANT  USAGE  ON SCHEMA public TO aluno, secretaria, coordenacao;
+
+-- Catálogo público da instituição: todos leem, ninguém além do dono altera.
+GRANT SELECT ON tb_campus, tb_curso, tb_curriculo, tb_curriculo_disciplina,
+                tb_disciplina, tb_pre_requisito, tb_periodo_letivo,
+                tb_feriado, tb_sala, tb_turma, tb_turma_horario
+    TO aluno, secretaria, coordenacao;
+-- Professor: o aluno vê o nome (vw_oferta_turma é security_invoker), e-mail institucional.
+GRANT SELECT ON tb_professor TO aluno, secretaria, coordenacao;
+
+-- Views de uso geral. vw_vagas_turma roda como dono e só expõe agregados.
+GRANT SELECT ON vw_oferta_turma, vw_vagas_turma TO aluno, secretaria, coordenacao;
+GRANT SELECT ON vw_historico_aluno              TO aluno, secretaria, coordenacao;
+
+-- Dados pessoais e acadêmicos (protegidos por RLS na seção 3).
+GRANT SELECT ON tb_aluno, tb_matricula, tb_historico TO aluno;
+
+-- Secretaria: opera matrículas e notas. Não apaga aluno (desligar = ativo_aluno
+-- false), não toca no catálogo. DELETE de matrícula é permitido (duplicidades;
+-- o histórico sai em cascata e o log guarda o rastro).
+GRANT SELECT, INSERT, UPDATE         ON tb_aluno                 TO secretaria;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tb_matricula, tb_historico TO secretaria;
+GRANT SELECT, INSERT                 ON tb_log_matricula         TO secretaria;
+GRANT USAGE ON SEQUENCE tb_matricula_id_matricula_seq,
+                        tb_historico_id_historico_seq,
+                        tb_aluno_id_aluno_seq,
+                        tb_log_matricula_id_log_matricula_seq TO secretaria;
+GRANT EXECUTE ON FUNCTION fn_atualizar_indicadores() TO secretaria, coordenacao;
+GRANT SELECT ON mv_indicadores_periodo TO secretaria, coordenacao;   -- matview não tem RLS: nunca ao aluno
+
+-- Coordenação: leitura de tudo, inclusive auditoria, e ajuste de oferta com
+-- privilégio por COLUNA (só vagas e professor da turma, nada mais).
+GRANT SELECT ON tb_aluno, tb_matricula, tb_historico, tb_log_matricula TO coordenacao;
+GRANT UPDATE (vagas_turma, id_professor) ON tb_turma TO coordenacao;
+

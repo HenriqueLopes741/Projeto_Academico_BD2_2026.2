@@ -127,6 +127,25 @@ AUTORES.md                 # integrantes e frente de cada um
 
 Cada integrante tem uma responsabilidade técnica formal (ver Seção 3 do enunciado) e é avaliado individualmente na arguição cruzada sobre a frente de **outro** colega — ver [AUTORES.md](AUTORES.md).
 
+## Marco 2 — como demonstrar
+
+Pré-requisito: scripts `01` a `03` já executados (ver acima). Rode `04` a `08` na ordem, como os anteriores; `06` e `08` são complementados por scripts de terminal em `scripts/` (executam `docker compose exec` por baixo; rode na pasta do projeto).
+
+| Frente | Script SQL | O que demonstrar | Comando de apoio |
+|---|---|---|---|
+| Views | `04_views.sql` | `SELECT * FROM vw_vagas_turma WHERE vagas_livres = 1;` e `SELECT * FROM mv_indicadores_periodo;` | `SELECT fn_atualizar_indicadores();` |
+| Índices | `05_indices.sql` | `EXPLAIN (ANALYZE, BUFFERS)` antes/depois: [evidencias/explain.md](evidencias/explain.md) | `./scripts/explain_antes_depois.sh` (regenera as evidências) |
+| Transações | `06_transacoes.sql` | anomalia (42 > 41 vagas) e as duas correções | `./scripts/demo_concorrencia.sh todos` |
+| Segurança | `07_seguranca_rls.sql` | aluno só vê o próprio histórico | `SET ROLE aluno_202510007; SELECT count(*) FROM tb_historico;` → 28 (depois `RESET ROLE;`) |
+| Backup | `08_backup_restore.sql` | restauração ao vivo com conferência | `./scripts/backup.sh` e `./scripts/restore.sh backups/<arquivo>.dump [--desastre]` |
+
+Notas:
+
+- `07` cria roles de demonstração com senha `demo` (`aluno_202510007`, `aluno_202510003`, `sec_demo`, `coord_demo`). Roles são do cluster: `docker compose down -v` as apaga junto.
+- `backups/` fica fora do Git (o dump e o arquivo de roles, que tem hash de senha).
+- Restauração de desastre ao vivo: `DELETE FROM tb_matricula;` → `./scripts/restore.sh backups/<arquivo>.dump --desastre` → o script confere contagens, md5 do conteúdo, sequences, índices, políticas RLS e views.
+- Os scripts de apoio aceitam `RUN=""` para rodar fora do Docker (usam as variáveis `PGHOST`, `PGUSER`, `PGPASSWORD` do `psql`).
+
 ## Marcos
 
 | Marco | Conteúdo | Data |

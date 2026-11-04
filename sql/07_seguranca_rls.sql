@@ -91,3 +91,47 @@ GRANT SELECT ON mv_indicadores_periodo TO secretaria, coordenacao;   -- matview 
 GRANT SELECT ON tb_aluno, tb_matricula, tb_historico, tb_log_matricula TO coordenacao;
 GRANT UPDATE (vagas_turma, id_professor) ON tb_turma TO coordenacao;
 
+-- ---------------------------------------------------------------------
+-- 3. ROW-LEVEL SECURITY
+-- ---------------------------------------------------------------------
+-- Função auxiliar: matrícula do aluno logado, ou NULL se a role não é de aluno.
+-- STABLE: constante dentro da consulta; o planejador pode avaliá-la uma vez.
+CREATE OR REPLACE FUNCTION fn_matricula_logada()
+RETURNS text
+LANGUAGE sql STABLE
+AS $$
+    SELECT CASE WHEN current_user LIKE 'aluno\_%' THEN substr(current_user, 7) END
+$$;
+GRANT EXECUTE ON FUNCTION fn_matricula_logada() TO aluno, secretaria, coordenacao;
+
+ALTER TABLE tb_aluno     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tb_matricula ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tb_historico ENABLE ROW LEVEL SECURITY;
+-- Com RLS ligado e SEM política para uma role, ela vê ZERO linhas (negação padrão).
+
+-- Equipe interna enxerga tudo (as permissões de operação já vêm dos GRANT).
+CREATE POLICY pol_aluno_equipe     ON tb_aluno     FOR ALL TO secretaria, coordenacao USING (true) WITH CHECK (true);
+CREATE POLICY pol_matricula_equipe ON tb_matricula FOR ALL TO secretaria, coordenacao USING (true) WITH CHECK (true);
+CREATE POLICY pol_historico_equipe ON tb_historico FOR ALL TO secretaria, coordenacao USING (true) WITH CHECK (true);
+
+-- Aluno: só as próprias linhas. Cada política é auto-suficiente (não depende
+-- do RLS das outras tabelas para ser correta).
+CREATE POLICY pol_aluno_proprio ON tb_aluno
+    FOR SELECT TO aluno
+    USING (matricula_aluno = fn_matricula_logada());
+
+CREATE POLICY pol_matricula_propria ON tb_matricula
+    FOR SELECT TO aluno
+    USING (EXISTS (SELECT 1 FROM tb_aluno a
+                    WHERE a.id_aluno = tb_matricula.id_aluno
+                      AND a.matricula_aluno = fn_matricula_logada()));
+
+CREATE POLICY pol_historico_proprio ON tb_historico
+    FOR SELECT TO aluno
+    USING (EXISTS (SELECT 1 FROM tb_matricula m
+                    JOIN tb_aluno a ON a.id_aluno = m.id_aluno
+                   WHERE m.id_matricula = tb_historico.id_matricula
+                     AND a.matricula_aluno = fn_matricula_logada()));
+
+-- tb_log_matricula não recebe RLS: o aluno simplesmente não tem GRANT nela.
+

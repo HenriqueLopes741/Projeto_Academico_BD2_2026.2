@@ -66,8 +66,13 @@ Os scripts são executados **manualmente, um por vez, no Query Tool**, na ordem 
 | 1 | [sql/01_ddl.sql](sql/01_ddl.sql) | extensão, tipos, domínios e as 16 tabelas com constraints |
 | 2 | [sql/02_carga.sql](sql/02_carga.sql) | carga de dados |
 | 3 | [sql/03_consultas.sql](sql/03_consultas.sql) | as 10 consultas do Marco 1 |
+| 4 | [sql/04_views.sql](sql/04_views.sql) | 3 views + materialized view |
+| 5 | [sql/05_indices.sql](sql/05_indices.sql) | índices (2 parciais, 1 GIN) |
+| 6 | [sql/06_transacoes.sql](sql/06_transacoes.sql) | roteiro da disputa pela última vaga |
+| 7 | [sql/07_seguranca_rls.sql](sql/07_seguranca_rls.sql) | roles, GRANT/REVOKE, RLS |
+| 8 | [sql/08_backup_restore.sql](sql/08_backup_restore.sql) | backup/restauração (conferência) |
 
-`04` a `08` compõem o Marco 2 e seguem a mesma ordem.
+O Marco 2 (`04` a `08`) segue a mesma ordem; veja [Marco 2 — como demonstrar](#marco-2--como-demonstrar).
 
 ### Passo a passo
 

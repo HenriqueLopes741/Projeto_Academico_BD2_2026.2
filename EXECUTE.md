@@ -72,7 +72,6 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_carga.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_consultas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_views.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_indices.sql
 docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bd2 -d matricula < ./sql/06b_regra_vagas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
@@ -83,19 +82,34 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_resto
 
 ### Ordem de execução
 
-1. `01_ddl.sql`: cria extensão, tipos, domínios e as tabelas com todas as constraints;
+1. `01_ddl.sql`: cria extensão, tipos, domínios, as tabelas com todas as constraints e os 4 índices de desempenho (1 parcial, 1 GIN);
 2. `02_carga.sql`: insere os dados iniciais;
 3. `03_consultas.sql`: scripts de consultas;
 4. `04_views.sql`: cria as views;
-5. `05_indices.sql`: cria índices;
-6. `06b_regra_vagas.sql`: valida a carga e cria a regra que impede matrícula acima das vagas;
-7. `06_transacoes.sql`: demonstração de concorrência (sem proteção, `FOR UPDATE` e `SERIALIZABLE`);
-8. `07_seguranca_rls.sql`: segurança e RLS;
-9. `08_backup_restore.sql`: backup e restauração.
+5. `06b_regra_vagas.sql`: valida a carga e cria a regra que impede matrícula acima das vagas;
+6. `06_transacoes.sql`: demonstração de concorrência (sem proteção, `FOR UPDATE` e `SERIALIZABLE`);
+7. `07_seguranca_rls.sql`: segurança e RLS;
+8. `08_backup_restore.sql`: backup e restauração.
+
+> Não existe `05`: os índices de desempenho ficam no `01_ddl.sql` (Parte 3), junto do resto do esquema.
 
 > Atenção: scripts de criação, como `01_ddl.sql` e `06b_regra_vagas.sql`, não devem ser executados novamente em um banco que já possui os objetos criados. Isso pode gerar erros como `type already exists` ou `relation already exists`.
 
-## 3. Gerar o relatório de evidências de transações
+## 3. Gerar os relatórios de evidências
+
+### Índices (EXPLAIN antes/depois)
+
+Depois de rodar o `01_ddl.sql` e o `02_carga.sql`, gere o relatório de desempenho:
+
+```bash
+bash scripts/evidencias_explain.sh
+```
+
+O resultado fica em `evidencias/explain.md`: para cada índice, o `EXPLAIN (ANALYZE, BUFFERS)` sem e com o índice, as páginas lidas e a mediana do tempo de execução.
+
+O script não altera o banco. Para medir o "antes", ele apaga o índice dentro de uma transação e desfaz com `ROLLBACK`. Os tempos mudam um pouco a cada execução; as páginas lidas (buffers), não.
+
+### Transações
 
 Depois de rodar o `06_transacoes.sql`, gere o relatório com os dados da execução:
 
@@ -123,16 +137,16 @@ docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/01_ddl.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/02_carga.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/03_consultas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/04_views.sql
-docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/05_indices.sql
 docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U bd2 -d matricula < ./sql/06b_regra_vagas.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/06_transacoes.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/07_seguranca_rls.sql
 docker compose exec -T postgres psql -U bd2 -d matricula < ./sql/08_backup_restore.sql
 ```
 
-Por fim, gere o relatório de evidências:
+Por fim, gere os relatórios de evidências:
 
 ```bash
+bash scripts/evidencias_explain.sh
 bash scripts/evidencias_transacoes.sh
 ```
 

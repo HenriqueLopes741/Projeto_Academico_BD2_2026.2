@@ -1,5 +1,5 @@
 -- =====================================================================
--- 01_ddl.sql — DDL do modelo lógico v4 (tipos, domínios e 16 tabelas)
+-- 01_ddl.sql — DDL do modelo lógico v4 (tipos, domínios, 16 tabelas e índices)
 -- Banco de Dados II (CCO072) — IESB 2026/2
 -- =====================================================================
 -- Pré-condição: base `matricula` vazia (docker compose down -v && up -d).
@@ -7,6 +7,7 @@
 --
 -- Nomes:  tabela tb_<nome> · atributo <atributo>_<tabela> · PK id_<tabela>
 --         FK = nome da PK referenciada · constraint pk_/uq_/ck_/fk_/ex_<tabela>_<assunto>
+--         índice de desempenho ix_<tabela>_<assunto> (Parte 3)
 -- Colunas: PK → FK → texto → numéricos → demais (data, boolean, enum, jsonb)
 -- Constraints: PK → UQ → CK → FK, dentro de cada CREATE TABLE.
 -- FKs: ON UPDATE CASCADE sempre; ON DELETE RESTRICT, salvo onde comentado.
@@ -374,6 +375,55 @@ CREATE TABLE tb_log_matricula (
     CONSTRAINT ck_log_matricula_detalhe_objeto
         CHECK (detalhe_log_matricula IS NULL OR jsonb_typeof(detalhe_log_matricula) = 'object')
 );
+
+-- =====================================================================
+-- PARTE 3 — ÍNDICES DE DESEMPENHO
+-- =====================================================================
+-- PK, UNIQUE e EXCLUDE já criam índice (Parte 2). Aqui ficam os índices que
+-- existem só por desempenho: cada um atende a uma consulta que fazia Seq Scan.
+-- Evidência: bash scripts/evidencias_explain.sh → evidencias/explain.md
+-- (EXPLAIN (ANALYZE, BUFFERS) antes/depois, sem forçar plano).
+--
+-- Já cobertos pelas constraints, sem índice novo:
+--   tb_matricula (id_aluno)     → uq_matricula_aluno_turma (id_aluno na frente)
+--   tb_historico (id_matricula) → uq_historico_matricula
+--   tb_aluno (matricula_aluno)  → uq_aluno_matricula (usado pela RLS do 07)
+-- FK não cria índice no lado que referencia: tb_matricula.id_turma estava sem.
+-- Tabelas de 1–2 páginas (tb_turma, tb_aluno...) não ganham índice: o Seq Scan
+-- já lê tudo em 1–2 leituras, e o índice só custaria escrita.
+
+-- Matrículas de uma turma. Atende a contagem da trigger de vagas (06b), que
+-- roda SEGURANDO o FOR UPDATE da turma: contagem curta = bloqueio curto.
+-- Também atende vw_vagas_turma por turma, a Q8 e a checagem da FK ao apagar
+-- turma. Não é parcial: a Q8 e a FK buscam sem filtrar status, e só 1% das
+-- matrículas é trancada.
+CREATE INDEX ix_matricula_turma
+    ON tb_matricula (id_turma);
+
+-- Trilha de auditoria de uma matrícula, em ordem. O log não tem FK de
+-- propósito, então nada o indexava. A 2ª coluna dispensa o Sort.
+CREATE INDEX ix_log_matricula_matricula
+    ON tb_log_matricula (id_matricula, ocorrido_em_log_matricula);
+
+-- PARCIAL: eventos de exceção (trancamento, remoção), mais recentes primeiro.
+-- 'criada' é ~99% do log: fora do índice, que fica minúsculo, e o INSERT de
+-- 'criada' (caso comum) não mexe nele. A consulta precisa repetir o WHERE
+-- (acao_log_matricula <> 'criada') para o planejador poder usar o índice.
+CREATE INDEX ix_log_matricula_excecao
+    ON tb_log_matricula (ocorrido_em_log_matricula DESC)
+    WHERE acao_log_matricula <> 'criada';
+
+-- GIN no jsonb: eventos de uma turma ou aluno (detalhe @> '{"id_turma": 73}').
+-- B-tree não indexa o conteúdo do jsonb. jsonb_path_ops: índice menor que o
+-- opclass padrão, mas só atende @>, que é o único operador usado.
+-- fastupdate = off: por padrão o GIN joga cada INSERT numa "pending list" e
+-- só a incorpora no VACUUM. Criado aqui, antes da carga, ele terminaria o 02
+-- com as ~3,3 mil linhas do log na pending list, e o planejador preferiria o
+-- Seq Scan. Desligado, cada INSERT entra direto na árvore. O log recebe uma
+-- linha por operação de matrícula, então o INSERT um pouco mais caro não pesa.
+CREATE INDEX ix_log_matricula_detalhe
+    ON tb_log_matricula USING gin (detalhe_log_matricula jsonb_path_ops)
+    WITH (fastupdate = off);
 
 -- =====================================================================
 -- DOCUMENTAÇÃO NO CATÁLOGO (\dt+ no psql, aba Propriedades no pgAdmin)

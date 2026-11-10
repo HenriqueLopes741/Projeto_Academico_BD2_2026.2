@@ -195,8 +195,9 @@ GROUP BY pl.id_periodo_letivo, pl.ano_periodo_letivo, pl.semestre_periodo_letivo
 WITH DATA;
 
 -- Índice único: obrigatório para REFRESH MATERIALIZED VIEW CONCURRENTLY
--- (atualiza sem bloquear as leituras). Fica aqui, e não em 05_indices.sql,
--- porque é requisito de funcionamento da política de atualização.
+-- (atualiza sem bloquear as leituras). Fica aqui, e não com os índices de
+-- desempenho do 01_ddl.sql, porque é requisito de funcionamento da política
+-- de atualização (e a materialized view só existe a partir deste script).
 CREATE UNIQUE INDEX uq_mv_indicadores_periodo_disciplina
     ON mv_indicadores_disciplina (id_periodo_letivo, id_disciplina);
 

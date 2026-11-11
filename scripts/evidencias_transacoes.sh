@@ -138,8 +138,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 4. Relatório. As variáveis entram já preenchidas; as crases são escapadas
-#    com \ para não serem interpretadas pelo shell.
+# 4. Relatório. As variáveis entram já preenchidas; as crases Markdown são
+#    escapadas com \ para não serem interpretadas pelo shell.
 cat > "$ARQ" <<EOF
 # Evidências: Transações e Concorrência
 
@@ -158,18 +158,18 @@ $TABELAS
 
 ## Estrutura dos cenários e regra de vagas
 
-O arquivo `sql/06b_regra_vagas.sql` instala no banco uma trigger (`trg_verifica_vaga`)
-que impede matrícula acima de `vagas_turma`. A demonstração usa essa regra da seguinte
+O arquivo \`sql/06b_regra_vagas.sql\` instala no banco uma trigger (\`trg_verifica_vaga\`)
+que impede matrícula acima de \`vagas_turma\`. A demonstração usa essa regra da seguinte
 forma:
 
 | Cenário | Regra de vagas (trigger) | O que demonstra |
 |---|---|---|
 | 1. Sem proteção | desabilitada | a falha: overbooking |
-| 2. `FOR UPDATE` | ativa | a regra funcionando, com espera e nova leitura |
-| 3. `SERIALIZABLE` | desabilitada | alternativa por isolamento, com retentativa |
+| 2. \`FOR UPDATE\` | ativa | a regra funcionando, com espera e nova leitura |
+| 3. \`SERIALIZABLE\` | desabilitada | alternativa por isolamento, com retentativa |
 
-No cenário 3, a trigger fica desabilitada porque ela também usa `FOR UPDATE` na turma,
-dentro do `INSERT` de A. Com ela ativa, a espera de B bloquearia o próprio script.
+No cenário 3, a trigger fica desabilitada porque ela também usa \`FOR UPDATE\` na turma,
+dentro do \`INSERT\` de A. Com ela ativa, a espera de B bloquearia o próprio script.
 
 ## A anomalia: write skew
 

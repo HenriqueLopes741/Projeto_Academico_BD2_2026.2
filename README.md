@@ -107,6 +107,102 @@ docker compose up -d
 
 Depois, rode os scripts no pgAdmin outra vez, a partir do `01_ddl.sql`. O cadastro do servidor no pgAdmin também é apagado e precisa ser refeito.
 
+## Demonstração — Administração e Operação (views, segurança, backup)
+
+Com os scripts `01` a `07` já rodados no banco `matricula`, a demonstração desta frente usa o **Query Tool** do pgAdmin (views, materialized view e RLS) e um **terminal bash** (Git Bash ou WSL) para o backup. No Query Tool, os exemplos estão comentados nos arquivos: copie o trecho, tire o `--` do começo de cada comando, **selecione só o que vai rodar** e aperte **F5**.
+
+### Views e materialized view
+
+Arquivo: [sql/04_views.sql](sql/04_views.sql), seção **CONSULTAS DE EXEMPLO (para a demonstração)**.
+
+```sql
+SELECT * FROM vw_oferta_turma WHERE codigo_turma = 'CCODM2B-BD2';
+
+SELECT codigo_turma, vagas_turma, vagas_ocupadas, vagas_livres, situacao_vagas
+  FROM vw_vagas_turma
+ WHERE periodo = '2026/2' AND situacao_vagas = 'ultima vaga'
+ ORDER BY codigo_turma;
+
+SELECT periodo, codigo_disciplina, media_final_historico, situacao_historico
+  FROM vw_historico_aluno
+ WHERE matricula_aluno = '202510007'
+ ORDER BY periodo, codigo_disciplina;
+
+SELECT periodo, codigo_disciplina, concluintes, taxa_aprovacao, media_geral
+  FROM mv_indicadores_disciplina
+ WHERE concluintes > 0
+ ORDER BY taxa_aprovacao, periodo
+ LIMIT 10;
+
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_indicadores_disciplina;
+```
+
+O `REFRESH MATERIALIZED VIEW CONCURRENTLY` atualiza a `mv_indicadores_disciplina` sem bloquear quem está lendo. Exige o índice único `uq_mv_indicadores_periodo_disciplina` (criado no próprio `04_views.sql`) e **não pode rodar dentro de um bloco `BEGIN`/`COMMIT`**.
+
+### Segurança e RLS
+
+Arquivo: [sql/07_seguranca_rls.sql](sql/07_seguranca_rls.sql), seção **DEMONSTRAÇÃO**. A demo usa `SET ROLE` porque o dono da tabela e o superusuário ignoram o RLS. Cada parte termina em `RESET ROLE`. Se um comando der erro, rode `RESET ROLE` antes de seguir: a aba do Query Tool permanece no último role.
+
+**A)** O aluno `202510007` vê só o próprio histórico:
+
+```sql
+SET ROLE aluno_202510007;
+SELECT count(*) FROM tb_historico;                                  -- 28
+SELECT DISTINCT matricula_aluno FROM vw_historico_aluno;            -- só 202510007
+SELECT count(*) FROM tb_aluno;                                      -- 1
+SELECT count(*) FROM tb_historico h JOIN tb_matricula m USING (id_matricula)
+ JOIN tb_aluno a USING (id_aluno) WHERE a.matricula_aluno = '202510003';  -- 0 (tentou ver outro)
+SELECT * FROM tb_log_matricula;                                     -- ERRO: permission denied
+UPDATE tb_historico SET nota_a1_historico = 10;                     -- ERRO: permission denied
+RESET ROLE;
+```
+
+**B)** Secretaria vê tudo, mas não apaga aluno:
+
+```sql
+SET ROLE sec_demo;
+SELECT count(*) FROM tb_historico;
+DELETE FROM tb_aluno;  -- ERRO
+RESET ROLE;
+```
+
+**C)** Coordenação lê tudo e só altera vagas/professor. O `UPDATE` de `vagas_turma` é permitido, mas **altera os dados de verdade: não rodar ao vivo**. Use só o exemplo que falha:
+
+```sql
+SET ROLE coord_demo;
+-- UPDATE tb_turma SET vagas_turma = 41;           -- ok (coluna permitida); altera os dados — não rodar ao vivo
+UPDATE tb_turma SET codigo_turma = 'X';            -- ERRO (coluna não permitida)
+RESET ROLE;
+```
+
+**D)** Por que `security_invoker` importa: `SELECT count(*) FROM vw_historico_aluno` como `aluno_202510007` devolve 28, não 3.320.
+
+```sql
+SET ROLE aluno_202510007;
+SELECT count(*) FROM vw_historico_aluno;  -- 28, não 3.320
+RESET ROLE;
+```
+
+### Backup e restore
+
+Esta parte roda no **terminal** (bash: Git Bash ou WSL), na pasta do projeto — não no pgAdmin. Os comandos estão em [scripts/backup.sh](scripts/backup.sh) e [scripts/restore.sh](scripts/restore.sh); o procedimento está documentado em [sql/08_backup_restore.sql](sql/08_backup_restore.sql).
+
+O `backup.sh` faz um `pg_dump -Fc` da base `matricula` (formato custom, snapshot consistente) e um `pg_dumpall --globals-only` das roles do cluster — elas não entram no dump da base. Também grava a impressão digital (contagens e md5) gerada por [sql/08_backup_restore.sql](sql/08_backup_restore.sql).
+
+```bash
+./scripts/backup.sh
+```
+
+Gera `backups/matricula_<data>.dump`, `backups/globais_<data>.sql` e `backups/matricula_<data>.fingerprint`.
+
+A restauração segura não toca na base original: cria `matricula_restaurada`, restaura o dump e compara o fingerprint com o da original. Se as linhas forem idênticas, os dados batem.
+
+```bash
+./scripts/restore.sh backups/matricula_<data>.dump
+```
+
+**Não rode o `--desastre` ao vivo.** Esse modo (`./scripts/restore.sh backups/matricula_<data>.dump --desastre`) derruba a base `matricula` e restaura sobre ela. A conferência do fingerprint também pode ser mostrada no pgAdmin, rodando a consulta de [sql/08_backup_restore.sql](sql/08_backup_restore.sql).
+
 ## Estrutura do repositório
 
 ```
